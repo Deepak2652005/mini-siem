@@ -2,20 +2,36 @@ package com.deepak.minisiem;
 
 import com.deepak.minisiem.model.SecurityEvent;
 import com.deepak.minisiem.parser.LogParser;
+import com.deepak.minisiem.reader.LogReader;
+import com.deepak.minisiem.service.EventStore;
+
+import java.util.List;
 
 public class Main {
 
     public static void main(String[] args) {
 
-        String logLine =
-                "2026-08-05 09:16:11 LOGIN_FAILED user=admin ip=192.168.1.20";
+        System.out.println("===== MINI SIEM =====");
 
+        LogReader logReader = new LogReader();
         LogParser logParser = new LogParser();
-        SecurityEvent event = logParser.parse(logLine);
+        EventStore eventStore = new EventStore();
 
-        System.out.println("Timestamp: " + event.getTimestamp());
-        System.out.println("Event Type: " + event.getEventType());
-        System.out.println("Username: " + event.getUsername());
-        System.out.println("IP Address: " + event.getIpAddress());
+        List<String> logLines = logReader.readLogFile();
+
+        for (String line : logLines) {
+
+            SecurityEvent event = logParser.parse(line);
+
+            eventStore.addEvent(event);
+
+        }
+
+        System.out.println();
+        System.out.println("Total Events Loaded: " + eventStore.getEventCount());
+        
+
     }
+
+
 }

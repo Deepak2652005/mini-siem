@@ -4,10 +4,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class LogReader {
 
-    public void readLogFile() {
+    public List<String> readLogFile() {
+
+        List<String> logLines = new ArrayList<>();
 
         Path logFilePath = Path.of("logs", "authentication.log");
 
@@ -18,7 +22,7 @@ public class LogReader {
             while ((line = reader.readLine()) != null) {
 
                 if (!line.isBlank()) {
-                    System.out.println(line);
+                    logLines.add(line);
                 }
 
             }
@@ -29,5 +33,7 @@ public class LogReader {
             System.out.println("Reason: " + exception.getMessage());
 
         }
+
+        return logLines;
     }
 }
