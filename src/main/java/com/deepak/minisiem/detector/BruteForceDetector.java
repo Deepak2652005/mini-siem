@@ -1,16 +1,21 @@
 package com.deepak.minisiem.detector;
 
+import com.deepak.minisiem.alert.SecurityAlert;
 import com.deepak.minisiem.model.SecurityEvent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class BruteForceDetector {
 
-    public void detect(List<SecurityEvent> events) {
+    private static final int FAILED_ATTEMPT_THRESHOLD = 3;
+
+    public List<SecurityAlert> detect(List<SecurityEvent> events) {
 
         Map<String, Integer> failedAttempts = new HashMap<>();
+        List<SecurityAlert> alerts = new ArrayList<>();
 
         for (SecurityEvent event : events) {
 
@@ -27,15 +32,27 @@ public class BruteForceDetector {
 
         for (Map.Entry<String, Integer> entry : failedAttempts.entrySet()) {
 
-            if (entry.getValue() >= 3) {
-                System.out.println(
-                        "ALERT: Possible brute-force attack detected"
+            int attemptCount = entry.getValue();
+
+            if (attemptCount >= FAILED_ATTEMPT_THRESHOLD) {
+
+                String[] keyParts = entry.getKey().split("\\|", 2);
+
+                String username = keyParts[0];
+                String ipAddress = keyParts[1];
+
+                SecurityAlert alert = new SecurityAlert(
+                        "BRUTE_FORCE",
+                        "HIGH",
+                        username,
+                        ipAddress,
+                        attemptCount + " failed login attempts detected."
                 );
-                System.out.println("Target: " + entry.getKey());
-                System.out.println(
-                        "Failed attempts: " + entry.getValue()
-                );
+
+                alerts.add(alert);
             }
         }
+
+        return alerts;
     }
 }
