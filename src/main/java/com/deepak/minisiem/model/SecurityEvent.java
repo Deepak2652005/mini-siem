@@ -1,14 +1,16 @@
 package com.deepak.minisiem.model;
 
+import java.time.LocalDateTime;
+
 public class SecurityEvent {
 
-    private String timestamp;
-    private String eventType;
-    private String username;
-    private String ipAddress;
+    private final LocalDateTime timestamp;
+    private final String eventType;
+    private final String username;
+    private final String ipAddress;
 
     public SecurityEvent(
-            String timestamp,
+            LocalDateTime timestamp,
             String eventType,
             String username,
             String ipAddress) {
@@ -17,9 +19,9 @@ public class SecurityEvent {
         this.eventType = eventType;
         this.username = username;
         this.ipAddress = ipAddress;
-
     }
-    public String getTimestamp() {
+
+    public LocalDateTime getTimestamp() {
         return timestamp;
     }
 
@@ -34,5 +36,4 @@ public class SecurityEvent {
     public String getIpAddress() {
         return ipAddress;
     }
-
 }
