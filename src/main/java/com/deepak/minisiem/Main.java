@@ -1,6 +1,7 @@
 package com.deepak.minisiem;
 
 import com.deepak.minisiem.alert.SecurityAlert;
+import com.deepak.minisiem.database.DatabaseManager;
 import com.deepak.minisiem.engine.DetectionEngine;
 import com.deepak.minisiem.model.SecurityEvent;
 import com.deepak.minisiem.parser.LogParser;
@@ -22,32 +23,44 @@ public class Main {
         EventStore eventStore = new EventStore();
         AlertStore alertStore = new AlertStore();
         DetectionEngine detectionEngine = new DetectionEngine();
+        DatabaseManager databaseManager = new DatabaseManager();
 
-        // Read all log lines
+        // Create SQLite tables if they do not already exist
+        databaseManager.createTables();
+
+        // Read authentication log file
         List<String> logLines = logReader.readLogFile();
 
-        // Parse and store security events
+        // Parse, store in memory, and save events to SQLite
         for (String line : logLines) {
 
             SecurityEvent event = logParser.parse(line);
+
+            // Store in RAM
             eventStore.addEvent(event);
 
+            // Store permanently in SQLite
+            databaseManager.saveEvent(event);
         }
 
-        System.out.println("Total Events Loaded: " + eventStore.getEventCount());
+        System.out.println(
+                "Total Events Loaded: " + eventStore.getEventCount()
+        );
 
         // Run all detection algorithms
         List<SecurityAlert> detectedAlerts =
                 detectionEngine.detect(eventStore.getEvents());
 
-        // Store alerts
+        // Store detected alerts in memory
         for (SecurityAlert alert : detectedAlerts) {
             alertStore.addAlert(alert);
         }
 
-        System.out.println("Total Alerts: " + alertStore.getAlertCount());
+        System.out.println(
+                "Total Alerts: " + alertStore.getAlertCount()
+        );
 
-        // Display alerts
+        // Display security alerts
         for (SecurityAlert alert : alertStore.getAlerts()) {
 
             System.out.println();
@@ -57,7 +70,6 @@ public class Main {
             System.out.println("Username  : " + alert.getUsername());
             System.out.println("IP Address: " + alert.getIpAddress());
             System.out.println("Message   : " + alert.getMessage());
-
         }
     }
 }
