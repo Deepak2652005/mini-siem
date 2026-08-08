@@ -15,6 +15,7 @@ import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -45,7 +46,7 @@ import java.util.TreeMap;
 public class DashboardApplication extends Application {
 
     // =========================
-    // BACKEND COMPONENTS
+    // BACKEND
     // =========================
 
     private final DatabaseManager databaseManager =
@@ -64,7 +65,7 @@ public class DashboardApplication extends Application {
             new DetectionEngine();
 
     // =========================
-    // DASHBOARD DATA
+    // DATA
     // =========================
 
     private final ObservableList<SecurityAlert> alertData =
@@ -74,7 +75,7 @@ public class DashboardApplication extends Application {
             FXCollections.observableArrayList();
 
     // =========================
-    // DASHBOARD COMPONENTS
+    // COMPONENTS
     // =========================
 
     private Label totalEventsValue;
@@ -84,10 +85,21 @@ public class DashboardApplication extends Application {
     private Label clockLabel;
     private Label dateLabel;
 
+    private Label monitoringStatusLabel;
+
     private PieChart eventTypeChart;
     private PieChart alertTypeChart;
 
+    private ComboBox<String> dataSourceSelector;
+
+    // =========================
+    // TIMERS
+    // =========================
+
     private Timeline clockTimeline;
+    private Timeline windowsRefreshTimeline;
+
+    private boolean windowsRefreshRunning = false;
 
     @Override
     public void start(Stage stage) {
@@ -99,25 +111,24 @@ public class DashboardApplication extends Application {
         // =========================
 
         Label title =
-                new Label("MINI SIEM DASHBOARD");
+                new Label(
+                        "MINI SIEM DASHBOARD"
+                );
 
         title.getStyleClass().add(
                 "dashboard-title"
         );
 
-        clockLabel =
-                new Label();
+        clockLabel = new Label();
+        dateLabel = new Label();
 
-        dateLabel =
-                new Label();
+        clockLabel
+                .getStyleClass()
+                .add("clock-time");
 
-        clockLabel.getStyleClass().add(
-                "clock-time"
-        );
-
-        dateLabel.getStyleClass().add(
-                "clock-date"
-        );
+        dateLabel
+                .getStyleClass()
+                .add("clock-date");
 
         VBox clockBox =
                 new VBox(
@@ -130,11 +141,11 @@ public class DashboardApplication extends Application {
                 Pos.CENTER_RIGHT
         );
 
-        Region headerSpacer =
+        Region spacer =
                 new Region();
 
         HBox.setHgrow(
-                headerSpacer,
+                spacer,
                 Priority.ALWAYS
         );
 
@@ -142,7 +153,7 @@ public class DashboardApplication extends Application {
                 new HBox(
                         20,
                         title,
-                        headerSpacer,
+                        spacer,
                         clockBox
                 );
 
@@ -150,14 +161,10 @@ public class DashboardApplication extends Application {
                 Pos.CENTER_LEFT
         );
 
-        header.setMaxWidth(
-                Double.MAX_VALUE
-        );
-
         startClock();
 
         // =========================
-        // SUMMARY CARDS
+        // CARDS
         // =========================
 
         totalEventsValue =
@@ -171,32 +178,25 @@ public class DashboardApplication extends Application {
 
         highSeverityValue
                 .getStyleClass()
-                .add("high-severity-value");
-
-        VBox eventCard =
-                createCard(
-                        "Total Events",
-                        totalEventsValue
-                );
-
-        VBox alertCard =
-                createCard(
-                        "Total Alerts",
-                        totalAlertsValue
-                );
-
-        VBox highSeverityCard =
-                createCard(
-                        "High Severity",
-                        highSeverityValue
+                .add(
+                        "high-severity-value"
                 );
 
         HBox cards =
                 new HBox(
                         20,
-                        eventCard,
-                        alertCard,
-                        highSeverityCard
+                        createCard(
+                                "Total Events",
+                                totalEventsValue
+                        ),
+                        createCard(
+                                "Total Alerts",
+                                totalAlertsValue
+                        ),
+                        createCard(
+                                "High Severity",
+                                highSeverityValue
+                        )
                 );
 
         cards.setAlignment(
@@ -204,19 +204,23 @@ public class DashboardApplication extends Application {
         );
 
         // =========================
-        // DATA SOURCE + REFRESH
+        // DATA SOURCE
         // =========================
 
-        Label dataSourceLabel =
-                new Label("Data Source:");
+        Label sourceLabel =
+                new Label(
+                        "Data Source:"
+                );
 
-        ComboBox<String> dataSourceSelector =
+        dataSourceSelector =
                 new ComboBox<>();
 
-        dataSourceSelector.getItems().addAll(
-                "Demo Log File",
-                "Windows Event Log"
-        );
+        dataSourceSelector
+                .getItems()
+                .addAll(
+                        "Demo Log File",
+                        "Windows Event Log"
+                );
 
         dataSourceSelector.setValue(
                 "Demo Log File"
@@ -227,48 +231,72 @@ public class DashboardApplication extends Application {
         );
 
         Button refreshButton =
-                new Button("Refresh");
+                new Button(
+                        "Refresh"
+                );
 
-        refreshButton.setPrefWidth(
-                120
-        );
-
-        refreshButton.setPrefHeight(
+        refreshButton.setPrefSize(
+                120,
                 38
         );
 
+        monitoringStatusLabel =
+                new Label(
+                        "DEMO MODE"
+                );
+
+        setStatusDemo();
+
         refreshButton.setOnAction(event -> {
 
-            String selectedSource =
-                    dataSourceSelector.getValue();
-
             if ("Windows Event Log"
-                    .equals(selectedSource)) {
+                    .equals(
+                            dataSourceSelector
+                                    .getValue()
+                    )) {
 
-                processWindowsEvents();
+                runWindowsRefreshInBackground();
 
             } else {
 
-                processLogs();
+                processDemoLogs();
+                refreshData();
             }
-
-            refreshData();
         });
 
-        HBox dataSourceControls =
+        dataSourceSelector.setOnAction(event -> {
+
+            if ("Windows Event Log"
+                    .equals(
+                            dataSourceSelector
+                                    .getValue()
+                    )) {
+
+                startWindowsAutoRefresh();
+
+            } else {
+
+                stopWindowsAutoRefresh();
+
+                setStatusDemo();
+            }
+        });
+
+        HBox sourceControls =
                 new HBox(
                         15,
-                        dataSourceLabel,
+                        sourceLabel,
                         dataSourceSelector,
-                        refreshButton
+                        refreshButton,
+                        monitoringStatusLabel
                 );
 
-        dataSourceControls.setAlignment(
+        sourceControls.setAlignment(
                 Pos.CENTER
         );
 
         // =========================
-        // SECURITY ALERTS
+        // ALERTS
         // =========================
 
         Label alertsTitle =
@@ -282,124 +310,110 @@ public class DashboardApplication extends Application {
                         alert -> true
                 );
 
-        TextField alertSearchField =
+        TextField alertSearch =
                 new TextField();
 
-        alertSearchField.setPromptText(
+        alertSearch.setPromptText(
                 "Search alerts by type, username, IP, message..."
         );
 
-        alertSearchField.setPrefWidth(
+        alertSearch.setPrefWidth(
                 380
         );
-
-        alertSearchField.setPrefHeight(
-                38
-        );
-
-        // =========================
-        // SEVERITY FILTER
-        // =========================
 
         ComboBox<String> severityFilter =
                 new ComboBox<>();
 
-        severityFilter.getItems().addAll(
-                "ALL",
-                "HIGH",
-                "MEDIUM",
-                "LOW"
-        );
+        severityFilter
+                .getItems()
+                .addAll(
+                        "ALL",
+                        "HIGH",
+                        "MEDIUM",
+                        "LOW"
+                );
 
         severityFilter.setValue(
                 "ALL"
         );
 
-        severityFilter.setPrefWidth(
-                140
-        );
-
-        // =========================
-        // ALERT TYPE FILTER
-        // =========================
-
         ComboBox<String> typeFilter =
                 new ComboBox<>();
 
-        typeFilter.getItems().addAll(
-                "ALL",
-                "BRUTE_FORCE",
-                "PASSWORD_SPRAY"
-        );
+        typeFilter
+                .getItems()
+                .addAll(
+                        "ALL",
+                        "BRUTE_FORCE",
+                        "PASSWORD_SPRAY"
+                );
 
         typeFilter.setValue(
                 "ALL"
         );
 
-        typeFilter.setPrefWidth(
-                180
-        );
-
-        // =========================
-        // ALERT FILTER LOGIC
-        // =========================
-
         Runnable updateAlertFilter = () -> {
 
-            String searchText =
-                    alertSearchField
+            String search =
+                    alertSearch
                             .getText()
                             .trim()
                             .toLowerCase();
 
-            String selectedSeverity =
-                    severityFilter.getValue();
+            String severity =
+                    severityFilter
+                            .getValue();
 
-            String selectedType =
-                    typeFilter.getValue();
+            String type =
+                    typeFilter
+                            .getValue();
 
             filteredAlerts.setPredicate(alert -> {
 
                 boolean searchMatch =
-                        searchText.isEmpty()
+                        search.isEmpty()
                                 || containsIgnoreCase(
                                 alert.getAlertType(),
-                                searchText
+                                search
                         )
                                 || containsIgnoreCase(
                                 alert.getSeverity(),
-                                searchText
+                                search
                         )
                                 || containsIgnoreCase(
                                 alert.getUsername(),
-                                searchText
+                                search
                         )
                                 || containsIgnoreCase(
                                 alert.getIpAddress(),
-                                searchText
+                                search
                         )
                                 || containsIgnoreCase(
                                 alert.getMessage(),
-                                searchText
+                                search
                         );
 
                 boolean severityMatch =
-                        "ALL".equals(selectedSeverity)
+                        "ALL".equals(severity)
                                 || (
-                                alert.getSeverity() != null
-                                        && alert.getSeverity()
+                                alert.getSeverity()
+                                        != null
+                                        && alert
+                                        .getSeverity()
                                         .equalsIgnoreCase(
-                                                selectedSeverity
+                                                severity
                                         )
                         );
 
                 boolean typeMatch =
-                        "ALL".equals(selectedType)
+                        "ALL".equals(type)
                                 || (
-                                alert.getAlertType() != null
-                                        && alert.getAlertType()
+                                alert.getAlertType()
+                                        != null
+                                        && alert
+                                        .getAlertType()
                                         .equalsIgnoreCase(
-                                                selectedType
+                                                type
                                         )
                         );
 
@@ -409,31 +423,34 @@ public class DashboardApplication extends Application {
             });
         };
 
-        alertSearchField
+        alertSearch
                 .textProperty()
                 .addListener(
-                        (observable, oldValue, newValue) ->
-                                updateAlertFilter.run()
+                        (a, b, c) ->
+                                updateAlertFilter
+                                        .run()
                 );
 
         severityFilter
                 .valueProperty()
                 .addListener(
-                        (observable, oldValue, newValue) ->
-                                updateAlertFilter.run()
+                        (a, b, c) ->
+                                updateAlertFilter
+                                        .run()
                 );
 
         typeFilter
                 .valueProperty()
                 .addListener(
-                        (observable, oldValue, newValue) ->
-                                updateAlertFilter.run()
+                        (a, b, c) ->
+                                updateAlertFilter
+                                        .run()
                 );
 
         HBox alertFilters =
                 new HBox(
                         15,
-                        alertSearchField,
+                        alertSearch,
                         severityFilter,
                         typeFilter
                 );
@@ -448,7 +465,7 @@ public class DashboardApplication extends Application {
                 );
 
         // =========================
-        // SECURITY EVENTS
+        // EVENTS
         // =========================
 
         Label eventsTitle =
@@ -459,60 +476,61 @@ public class DashboardApplication extends Application {
         FilteredList<SecurityEvent> filteredEvents =
                 new FilteredList<>(
                         eventData,
-                        securityEvent -> true
+                        event -> true
                 );
 
-        TextField eventSearchField =
+        TextField eventSearch =
                 new TextField();
 
-        eventSearchField.setPromptText(
+        eventSearch.setPromptText(
                 "Search events by username, IP, event type..."
         );
 
-        eventSearchField.setMaxWidth(
+        eventSearch.setMaxWidth(
                 500
         );
 
-        eventSearchField.setPrefHeight(
-                38
-        );
-
-        eventSearchField
+        eventSearch
                 .textProperty()
                 .addListener(
-                        (observable, oldValue, newValue) -> {
+                        (a, b, value) -> {
 
-                            String searchText =
-                                    newValue
+                            String search =
+                                    value
                                             .trim()
                                             .toLowerCase();
 
                             filteredEvents.setPredicate(
                                     securityEvent -> {
 
-                                        if (searchText.isEmpty()) {
+                                        if (search.isEmpty()) {
                                             return true;
                                         }
 
                                         return containsIgnoreCase(
-                                                securityEvent.getUsername(),
-                                                searchText
+                                                securityEvent
+                                                        .getUsername(),
+                                                search
                                         )
                                                 || containsIgnoreCase(
-                                                securityEvent.getIpAddress(),
-                                                searchText
+                                                securityEvent
+                                                        .getIpAddress(),
+                                                search
                                         )
                                                 || containsIgnoreCase(
-                                                securityEvent.getEventType(),
-                                                searchText
+                                                securityEvent
+                                                        .getEventType(),
+                                                search
                                         )
                                                 || (
-                                                securityEvent.getTimestamp() != null
+                                                securityEvent
+                                                        .getTimestamp()
+                                                        != null
                                                         && containsIgnoreCase(
                                                         securityEvent
                                                                 .getTimestamp()
                                                                 .toString(),
-                                                        searchText
+                                                        search
                                                 )
                                         );
                                     }
@@ -552,7 +570,7 @@ public class DashboardApplication extends Application {
         );
 
         // =========================
-        // MAIN LAYOUT
+        // MAIN
         // =========================
 
         VBox content =
@@ -560,14 +578,14 @@ public class DashboardApplication extends Application {
                         30,
                         header,
                         cards,
-                        dataSourceControls,
+                        sourceControls,
 
                         alertsTitle,
                         alertFilters,
                         alertTable,
 
                         eventsTitle,
-                        eventSearchField,
+                        eventSearch,
                         eventTable,
 
                         analyticsTitle,
@@ -591,14 +609,6 @@ public class DashboardApplication extends Application {
                 true
         );
 
-        scrollPane.setPannable(
-                true
-        );
-
-        // =========================
-        // SCENE
-        // =========================
-
         Scene scene =
                 new Scene(
                         scrollPane,
@@ -606,14 +616,16 @@ public class DashboardApplication extends Application {
                         750
                 );
 
-        scene.getStylesheets().add(
-                Objects.requireNonNull(
-                        getClass()
-                                .getResource(
-                                        "/dashboard.css"
-                                )
-                ).toExternalForm()
-        );
+        scene
+                .getStylesheets()
+                .add(
+                        Objects.requireNonNull(
+                                getClass()
+                                        .getResource(
+                                                "/dashboard.css"
+                                        )
+                        ).toExternalForm()
+                );
 
         stage.setTitle(
                 "Mini SIEM Dashboard"
@@ -625,11 +637,20 @@ public class DashboardApplication extends Application {
 
         stage.show();
 
+        stage.setOnCloseRequest(event -> {
+
+            stopWindowsAutoRefresh();
+
+            if (clockTimeline != null) {
+                clockTimeline.stop();
+            }
+        });
+
         refreshData();
     }
 
     // =========================
-    // REAL-TIME CLOCK
+    // CLOCK
     // =========================
 
     private void startClock() {
@@ -657,120 +678,113 @@ public class DashboardApplication extends Application {
         LocalDateTime now =
                 LocalDateTime.now();
 
-        DateTimeFormatter timeFormatter =
-                DateTimeFormatter.ofPattern(
-                        "hh:mm:ss a"
-                );
-
-        DateTimeFormatter dateFormatter =
-                DateTimeFormatter.ofPattern(
-                        "dd MMM yyyy"
-                );
-
         clockLabel.setText(
                 now.format(
-                        timeFormatter
+                        DateTimeFormatter
+                                .ofPattern(
+                                        "hh:mm:ss a"
+                                )
                 )
         );
 
         dateLabel.setText(
                 now.format(
-                        dateFormatter
+                        DateTimeFormatter
+                                .ofPattern(
+                                        "dd MMM yyyy"
+                                )
                 )
         );
     }
 
     // =========================
-    // PROCESS DEMO LOG FILE
+    // DEMO LOG
     // =========================
 
-    private void processLogs() {
+    private void processDemoLogs() {
 
-        System.out.println(
-                "Reading demo authentication log..."
-        );
-
-        List<String> logLines =
+        List<String> lines =
                 logReader.readLogFile();
 
-        for (String line : logLines) {
+        for (String line : lines) {
 
-            SecurityEvent securityEvent =
-                    logParser.parse(line);
+            SecurityEvent event =
+                    logParser.parse(
+                            line
+                    );
 
-            if (securityEvent != null) {
+            if (event != null) {
 
                 databaseManager.saveEvent(
-                        securityEvent
+                        event
                 );
             }
         }
 
-        List<SecurityEvent> events =
-                databaseManager.getAllEvents();
-
-        List<SecurityAlert> detectedAlerts =
-                detectionEngine.detect(
-                        events
-                );
-
-        for (SecurityAlert alert : detectedAlerts) {
-
-            if (alert != null) {
-
-                databaseManager.saveAlert(
-                        alert
-                );
-            }
-        }
-
-        System.out.println(
-                "Demo log processing complete."
-        );
+        runDetectionEngine();
     }
 
     // =========================
-    // PROCESS WINDOWS EVENT LOG
+    // WINDOWS EVENTS
     // =========================
 
     private void processWindowsEvents() {
 
+        long lastRecordId =
+                databaseManager
+                        .getLatestSourceEventId();
+
         System.out.println(
-                "Reading Windows Security Event Log..."
+                "Checking for new Windows events..."
         );
 
         List<SecurityEvent> windowsEvents =
                 windowsEventLogReader
-                        .readSecurityEvents();
+                        .readSecurityEventsAfter(
+                                lastRecordId
+                        );
+
+        if (windowsEvents.isEmpty()) {
+
+            System.out.println(
+                    "No new Windows events."
+            );
+
+            return;
+        }
+
+        for (SecurityEvent event
+                : windowsEvents) {
+
+            databaseManager.saveEvent(
+                    event
+            );
+        }
 
         System.out.println(
-                "Windows events retrieved: "
+                "New Windows events saved: "
                         + windowsEvents.size()
         );
 
-        for (SecurityEvent securityEvent
-                : windowsEvents) {
+        runDetectionEngine();
+    }
 
-            if (securityEvent != null) {
+    // =========================
+    // DETECTION
+    // =========================
 
-                databaseManager.saveEvent(
-                        securityEvent
-                );
-            }
-        }
+    private void runDetectionEngine() {
 
-        // Reload events from SQLite
-        List<SecurityEvent> allEvents =
-                databaseManager.getAllEvents();
+        List<SecurityEvent> events =
+                databaseManager
+                        .getAllEvents();
 
-        // Run detection engine
-        List<SecurityAlert> detectedAlerts =
+        List<SecurityAlert> alerts =
                 detectionEngine.detect(
-                        allEvents
+                        events
                 );
 
-        for (SecurityAlert alert
-                : detectedAlerts) {
+        for (SecurityAlert alert : alerts) {
 
             if (alert != null) {
 
@@ -779,24 +793,189 @@ public class DashboardApplication extends Application {
                 );
             }
         }
+    }
+
+    // =========================
+    // WINDOWS AUTO MONITORING
+    // =========================
+
+    private void startWindowsAutoRefresh() {
+
+        stopWindowsAutoRefresh();
+
+        setStatusLive();
+
+        runWindowsRefreshInBackground();
+
+        windowsRefreshTimeline =
+                new Timeline(
+                        new KeyFrame(
+                                Duration.seconds(5),
+                                event ->
+                                        runWindowsRefreshInBackground()
+                        )
+                );
+
+        windowsRefreshTimeline.setCycleCount(
+                Animation.INDEFINITE
+        );
+
+        windowsRefreshTimeline.play();
 
         System.out.println(
-                "Windows Event Log processing complete."
+                "Windows LIVE monitoring started."
+        );
+    }
+
+    private void stopWindowsAutoRefresh() {
+
+        if (windowsRefreshTimeline
+                != null) {
+
+            windowsRefreshTimeline.stop();
+
+            windowsRefreshTimeline =
+                    null;
+        }
+    }
+
+    // =========================
+    // BACKGROUND WINDOWS TASK
+    // =========================
+
+    private void runWindowsRefreshInBackground() {
+
+        if (windowsRefreshRunning) {
+            return;
+        }
+
+        windowsRefreshRunning =
+                true;
+
+        setStatusScanning();
+
+        Task<Void> task =
+                new Task<>() {
+
+                    @Override
+                    protected Void call() {
+
+                        processWindowsEvents();
+
+                        return null;
+                    }
+                };
+
+        task.setOnSucceeded(event -> {
+
+            windowsRefreshRunning =
+                    false;
+
+            refreshData();
+
+            if ("Windows Event Log"
+                    .equals(
+                            dataSourceSelector
+                                    .getValue()
+                    )) {
+
+                setStatusLive();
+            }
+        });
+
+        task.setOnFailed(event -> {
+
+            windowsRefreshRunning =
+                    false;
+
+            setStatusError();
+
+            if (task.getException()
+                    != null) {
+
+                task.getException()
+                        .printStackTrace();
+            }
+        });
+
+        Thread thread =
+                new Thread(
+                        task
+                );
+
+        thread.setDaemon(
+                true
+        );
+
+        thread.start();
+    }
+
+    // =========================
+    // STATUS
+    // =========================
+
+    private void setStatusDemo() {
+
+        monitoringStatusLabel.setText(
+                "DEMO MODE"
+        );
+
+        monitoringStatusLabel.setStyle(
+                "-fx-text-fill: #94a3b8;" +
+                        "-fx-font-weight: bold;"
+        );
+    }
+
+    private void setStatusLive() {
+
+        monitoringStatusLabel.setText(
+                "LIVE"
+        );
+
+        monitoringStatusLabel.setStyle(
+                "-fx-text-fill: #22c55e;" +
+                        "-fx-font-weight: bold;"
+        );
+    }
+
+    private void setStatusScanning() {
+
+        monitoringStatusLabel.setText(
+                "SCANNING..."
+        );
+
+        monitoringStatusLabel.setStyle(
+                "-fx-text-fill: #38bdf8;" +
+                        "-fx-font-weight: bold;"
+        );
+    }
+
+    private void setStatusError() {
+
+        monitoringStatusLabel.setText(
+                "ERROR"
+        );
+
+        monitoringStatusLabel.setStyle(
+                "-fx-text-fill: #ef4444;" +
+                        "-fx-font-weight: bold;"
         );
     }
 
     // =========================
-    // REFRESH DASHBOARD
+    // REFRESH UI
     // =========================
 
     private void refreshData() {
 
         alertData.setAll(
-                databaseManager.getAllAlerts()
+                databaseManager
+                        .getAllAlerts()
         );
 
         eventData.setAll(
-                databaseManager.getAllEvents()
+                databaseManager
+                        .getAllEvents()
         );
 
         totalEventsValue.setText(
@@ -813,11 +992,13 @@ public class DashboardApplication extends Application {
                 )
         );
 
-        long highSeverityCount =
+        long highCount =
                 alertData.stream()
                         .filter(alert ->
-                                alert.getSeverity() != null
-                                        && alert.getSeverity()
+                                alert.getSeverity()
+                                        != null
+                                        && alert
+                                        .getSeverity()
                                         .equalsIgnoreCase(
                                                 "HIGH"
                                         )
@@ -826,16 +1007,17 @@ public class DashboardApplication extends Application {
 
         highSeverityValue.setText(
                 String.valueOf(
-                        highSeverityCount
+                        highCount
                 )
         );
 
         updateEventTypeChart();
+
         updateAlertTypeChart();
     }
 
     // =========================
-    // EVENT TYPE CHART
+    // EVENT CHART
     // =========================
 
     private PieChart createEventTypeChart() {
@@ -845,14 +1027,6 @@ public class DashboardApplication extends Application {
 
         chart.setTitle(
                 "Event Types"
-        );
-
-        chart.setLabelsVisible(
-                true
-        );
-
-        chart.setLegendVisible(
-                true
         );
 
         chart.setPrefSize(
@@ -865,51 +1039,51 @@ public class DashboardApplication extends Application {
 
     private void updateEventTypeChart() {
 
-        Map<String, Long> eventCounts =
+        Map<String, Long> counts =
                 new TreeMap<>();
 
-        for (SecurityEvent event : eventData) {
+        for (SecurityEvent event
+                : eventData) {
 
-            if (event.getEventType() == null) {
+            if (event.getEventType()
+                    == null) {
+
                 continue;
             }
 
-            String eventType =
-                    event.getEventType();
-
-            eventCounts.put(
-                    eventType,
-                    eventCounts.getOrDefault(
-                            eventType,
+            counts.put(
+                    event.getEventType(),
+                    counts.getOrDefault(
+                            event.getEventType(),
                             0L
                     ) + 1
             );
         }
 
-        ObservableList<PieChart.Data> chartData =
-                FXCollections.observableArrayList();
+        ObservableList<PieChart.Data> data =
+                FXCollections
+                        .observableArrayList();
 
-        for (Map.Entry<String, Long> entry
-                : eventCounts.entrySet()) {
-
-            chartData.add(
-                    new PieChart.Data(
-                            entry.getKey()
-                                    + " ("
-                                    + entry.getValue()
-                                    + ")",
-                            entry.getValue()
-                    )
-            );
-        }
+        counts.forEach(
+                (name, count) ->
+                        data.add(
+                                new PieChart.Data(
+                                        name
+                                                + " ("
+                                                + count
+                                                + ")",
+                                        count
+                                )
+                        )
+        );
 
         eventTypeChart.setData(
-                chartData
+                data
         );
     }
 
     // =========================
-    // ALERT TYPE CHART
+    // ALERT CHART
     // =========================
 
     private PieChart createAlertTypeChart() {
@@ -919,14 +1093,6 @@ public class DashboardApplication extends Application {
 
         chart.setTitle(
                 "Alert Types"
-        );
-
-        chart.setLabelsVisible(
-                true
-        );
-
-        chart.setLegendVisible(
-                true
         );
 
         chart.setPrefSize(
@@ -939,62 +1105,62 @@ public class DashboardApplication extends Application {
 
     private void updateAlertTypeChart() {
 
-        Map<String, Long> alertCounts =
+        Map<String, Long> counts =
                 new TreeMap<>();
 
-        for (SecurityAlert alert : alertData) {
+        for (SecurityAlert alert
+                : alertData) {
 
-            if (alert.getAlertType() == null) {
+            if (alert.getAlertType()
+                    == null) {
+
                 continue;
             }
 
-            String alertType =
-                    alert.getAlertType();
-
-            alertCounts.put(
-                    alertType,
-                    alertCounts.getOrDefault(
-                            alertType,
+            counts.put(
+                    alert.getAlertType(),
+                    counts.getOrDefault(
+                            alert.getAlertType(),
                             0L
                     ) + 1
             );
         }
 
-        ObservableList<PieChart.Data> chartData =
-                FXCollections.observableArrayList();
+        ObservableList<PieChart.Data> data =
+                FXCollections
+                        .observableArrayList();
 
-        for (Map.Entry<String, Long> entry
-                : alertCounts.entrySet()) {
-
-            chartData.add(
-                    new PieChart.Data(
-                            entry.getKey()
-                                    + " ("
-                                    + entry.getValue()
-                                    + ")",
-                            entry.getValue()
-                    )
-            );
-        }
+        counts.forEach(
+                (name, count) ->
+                        data.add(
+                                new PieChart.Data(
+                                        name
+                                                + " ("
+                                                + count
+                                                + ")",
+                                        count
+                                )
+                        )
+        );
 
         alertTypeChart.setData(
-                chartData
+                data
         );
     }
 
     // =========================
-    // UTILITY
+    // UTIL
     // =========================
 
     private boolean containsIgnoreCase(
             String value,
-            String searchText) {
+            String search) {
 
         return value != null
                 && value
                 .toLowerCase()
                 .contains(
-                        searchText
+                        search
                 );
     }
 
@@ -1017,130 +1183,129 @@ public class DashboardApplication extends Application {
     // ALERT TABLE
     // =========================
 
-    private TableView<SecurityAlert> createAlertTable(
+    private TableView<SecurityAlert>
+    createAlertTable(
             ObservableList<SecurityAlert> alerts) {
 
         TableView<SecurityAlert> table =
                 new TableView<>();
 
-        TableColumn<SecurityAlert, String> typeColumn =
+        TableColumn<SecurityAlert, String> type =
                 new TableColumn<>(
                         "Type"
                 );
 
-        typeColumn.setCellValueFactory(
+        type.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "alertType"
                 )
         );
 
-        TableColumn<SecurityAlert, String> severityColumn =
+        TableColumn<SecurityAlert, String> severity =
                 new TableColumn<>(
                         "Severity"
                 );
 
-        severityColumn.setCellValueFactory(
+        severity.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "severity"
                 )
         );
 
-        severityColumn.setCellFactory(
+        severity.setCellFactory(
                 column ->
                         new TableCell<>() {
 
                             @Override
                             protected void updateItem(
-                                    String severity,
+                                    String value,
                                     boolean empty) {
 
                                 super.updateItem(
-                                        severity,
+                                        value,
                                         empty
                                 );
 
-                                if (empty || severity == null) {
+                                if (empty
+                                        || value == null) {
 
                                     setText(null);
+
                                     setStyle("");
 
                                     return;
                                 }
 
-                                setText(
-                                        severity
-                                );
+                                setText(value);
 
                                 switch (
-                                        severity.toUpperCase()
+                                        value.toUpperCase()
                                 ) {
 
                                     case "HIGH" ->
                                             setStyle(
-                                                    "-fx-text-fill: #ef4444;" +
-                                                            "-fx-font-weight: bold;"
+                                                    "-fx-text-fill:#ef4444;" +
+                                                            "-fx-font-weight:bold;"
                                             );
 
                                     case "MEDIUM" ->
                                             setStyle(
-                                                    "-fx-text-fill: #f59e0b;" +
-                                                            "-fx-font-weight: bold;"
+                                                    "-fx-text-fill:#f59e0b;" +
+                                                            "-fx-font-weight:bold;"
                                             );
 
                                     case "LOW" ->
                                             setStyle(
-                                                    "-fx-text-fill: #22c55e;" +
-                                                            "-fx-font-weight: bold;"
+                                                    "-fx-text-fill:#22c55e;" +
+                                                            "-fx-font-weight:bold;"
                                             );
 
                                     default ->
-                                            setStyle(
-                                                    "-fx-text-fill: #e2e8f0;"
-                                            );
+                                            setStyle("");
                                 }
                             }
                         }
         );
 
-        TableColumn<SecurityAlert, String> usernameColumn =
+        TableColumn<SecurityAlert, String> username =
                 new TableColumn<>(
                         "Username"
                 );
 
-        usernameColumn.setCellValueFactory(
+        username.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "username"
                 )
         );
 
-        TableColumn<SecurityAlert, String> ipColumn =
+        TableColumn<SecurityAlert, String> ip =
                 new TableColumn<>(
                         "IP Address"
                 );
 
-        ipColumn.setCellValueFactory(
+        ip.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "ipAddress"
                 )
         );
 
-        TableColumn<SecurityAlert, String> messageColumn =
+        TableColumn<SecurityAlert, String> message =
                 new TableColumn<>(
                         "Message"
                 );
 
-        messageColumn.setCellValueFactory(
+        message.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "message"
                 )
         );
 
         table.getColumns().addAll(
-                typeColumn,
-                severityColumn,
-                usernameColumn,
-                ipColumn,
-                messageColumn
+                type,
+                severity,
+                username,
+                ip,
+                message
         );
 
         table.setItems(
@@ -1163,61 +1328,62 @@ public class DashboardApplication extends Application {
     // EVENT TABLE
     // =========================
 
-    private TableView<SecurityEvent> createEventTable(
+    private TableView<SecurityEvent>
+    createEventTable(
             ObservableList<SecurityEvent> events) {
 
         TableView<SecurityEvent> table =
                 new TableView<>();
 
-        TableColumn<SecurityEvent, LocalDateTime> timestampColumn =
+        TableColumn<SecurityEvent, LocalDateTime> timestamp =
                 new TableColumn<>(
                         "Timestamp"
                 );
 
-        timestampColumn.setCellValueFactory(
+        timestamp.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "timestamp"
                 )
         );
 
-        TableColumn<SecurityEvent, String> eventTypeColumn =
+        TableColumn<SecurityEvent, String> type =
                 new TableColumn<>(
                         "Event Type"
                 );
 
-        eventTypeColumn.setCellValueFactory(
+        type.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "eventType"
                 )
         );
 
-        TableColumn<SecurityEvent, String> usernameColumn =
+        TableColumn<SecurityEvent, String> username =
                 new TableColumn<>(
                         "Username"
                 );
 
-        usernameColumn.setCellValueFactory(
+        username.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "username"
                 )
         );
 
-        TableColumn<SecurityEvent, String> ipColumn =
+        TableColumn<SecurityEvent, String> ip =
                 new TableColumn<>(
                         "IP Address"
                 );
 
-        ipColumn.setCellValueFactory(
+        ip.setCellValueFactory(
                 new PropertyValueFactory<>(
                         "ipAddress"
                 )
         );
 
         table.getColumns().addAll(
-                timestampColumn,
-                eventTypeColumn,
-                usernameColumn,
-                ipColumn
+                timestamp,
+                type,
+                username,
+                ip
         );
 
         table.setItems(
@@ -1237,7 +1403,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // DASHBOARD CARD
+    // CARD
     // =========================
 
     private VBox createCard(

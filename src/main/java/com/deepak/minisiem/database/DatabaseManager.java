@@ -102,7 +102,6 @@ public class DatabaseManager {
                     createAlertUniqueIndex
             );
 
-            // Upgrade old database automatically
             addSourceEventIdColumnIfNeeded(
                     connection
             );
@@ -167,10 +166,6 @@ public class DatabaseManager {
 
         if (!columnExists) {
 
-            System.out.println(
-                    "Updating events table..."
-            );
-
             String alterTable = """
                     ALTER TABLE events
                     ADD COLUMN source_event_id TEXT;
@@ -191,19 +186,12 @@ public class DatabaseManager {
     }
 
     // =========================
-    // WINDOWS EVENT UNIQUE INDEX
+    // WINDOWS RECORD ID INDEX
     // =========================
 
     private void createSourceEventIdIndex(
             Connection connection)
             throws SQLException {
-
-        /*
-         * Only non-null source IDs need to be unique.
-         *
-         * Demo authentication.log events have NULL
-         * source_event_id values.
-         */
 
         String sql = """
                 CREATE UNIQUE INDEX IF NOT EXISTS
@@ -220,7 +208,7 @@ public class DatabaseManager {
     }
 
     // =========================
-    // SAVE SECURITY EVENT
+    // SAVE EVENT
     // =========================
 
     public void saveEvent(
@@ -229,14 +217,6 @@ public class DatabaseManager {
         if (event == null) {
             return;
         }
-
-        /*
-         * Windows events:
-         * duplicate protection comes from source_event_id.
-         *
-         * Demo events:
-         * source_event_id will be NULL.
-         */
 
         String sql = """
                 INSERT OR IGNORE INTO events (
@@ -295,7 +275,7 @@ public class DatabaseManager {
     }
 
     // =========================
-    // SAVE SECURITY ALERT
+    // SAVE ALERT
     // =========================
 
     public void saveAlert(
@@ -361,6 +341,47 @@ public class DatabaseManager {
     }
 
     // =========================
+    // GET LATEST WINDOWS RECORD ID
+    // =========================
+
+    public long getLatestSourceEventId() {
+
+        String sql = """
+                SELECT MAX(
+                    CAST(source_event_id AS INTEGER)
+                )
+                FROM events
+                WHERE source_event_id IS NOT NULL
+                  AND source_event_id != '';
+                """;
+
+        try (Connection connection = connect();
+             Statement statement =
+                     connection.createStatement();
+             ResultSet resultSet =
+                     statement.executeQuery(sql)) {
+
+            if (resultSet.next()) {
+
+                return resultSet.getLong(1);
+            }
+
+        } catch (SQLException exception) {
+
+            System.out.println(
+                    "Could not get latest Windows RecordId."
+            );
+
+            System.out.println(
+                    "Reason: "
+                            + exception.getMessage()
+            );
+        }
+
+        return 0;
+    }
+
+    // =========================
     // EVENT COUNT
     // =========================
 
@@ -384,11 +405,6 @@ public class DatabaseManager {
 
             System.out.println(
                     "Could not count database events."
-            );
-
-            System.out.println(
-                    "Reason: "
-                            + exception.getMessage()
             );
         }
 
@@ -420,18 +436,13 @@ public class DatabaseManager {
             System.out.println(
                     "Could not count database alerts."
             );
-
-            System.out.println(
-                    "Reason: "
-                            + exception.getMessage()
-            );
         }
 
         return 0;
     }
 
     // =========================
-    // LOAD SECURITY EVENTS
+    // LOAD EVENTS
     // =========================
 
     public List<SecurityEvent> getAllEvents() {
@@ -465,33 +476,21 @@ public class DatabaseManager {
                                 )
                         );
 
-                String eventType =
-                        resultSet.getString(
-                                "event_type"
-                        );
-
-                String username =
-                        resultSet.getString(
-                                "username"
-                        );
-
-                String ipAddress =
-                        resultSet.getString(
-                                "ip_address"
-                        );
-
-                String sourceEventId =
-                        resultSet.getString(
-                                "source_event_id"
-                        );
-
                 SecurityEvent event =
                         new SecurityEvent(
                                 timestamp,
-                                eventType,
-                                username,
-                                ipAddress,
-                                sourceEventId
+                                resultSet.getString(
+                                        "event_type"
+                                ),
+                                resultSet.getString(
+                                        "username"
+                                ),
+                                resultSet.getString(
+                                        "ip_address"
+                                ),
+                                resultSet.getString(
+                                        "source_event_id"
+                                )
                         );
 
                 events.add(event);
@@ -513,7 +512,7 @@ public class DatabaseManager {
     }
 
     // =========================
-    // LOAD SECURITY ALERTS
+    // LOAD ALERTS
     // =========================
 
     public List<SecurityAlert> getAllAlerts() {
@@ -540,38 +539,23 @@ public class DatabaseManager {
 
             while (resultSet.next()) {
 
-                String alertType =
-                        resultSet.getString(
-                                "alert_type"
-                        );
-
-                String severity =
-                        resultSet.getString(
-                                "severity"
-                        );
-
-                String username =
-                        resultSet.getString(
-                                "username"
-                        );
-
-                String ipAddress =
-                        resultSet.getString(
-                                "ip_address"
-                        );
-
-                String message =
-                        resultSet.getString(
-                                "message"
-                        );
-
                 SecurityAlert alert =
                         new SecurityAlert(
-                                alertType,
-                                severity,
-                                username,
-                                ipAddress,
-                                message
+                                resultSet.getString(
+                                        "alert_type"
+                                ),
+                                resultSet.getString(
+                                        "severity"
+                                ),
+                                resultSet.getString(
+                                        "username"
+                                ),
+                                resultSet.getString(
+                                        "ip_address"
+                                ),
+                                resultSet.getString(
+                                        "message"
+                                )
                         );
 
                 alerts.add(alert);

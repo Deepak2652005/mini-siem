@@ -4,54 +4,105 @@ import com.deepak.minisiem.model.SecurityEvent;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class WindowsEventLogReader {
 
     private static final DateTimeFormatter DATE_FORMAT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            DateTimeFormatter.ofPattern(
+                    "yyyy-MM-dd HH:mm:ss"
+            );
 
-    public List<SecurityEvent> readSecurityEvents() {
+    // =========================
+    // READ EVENTS AFTER RECORD ID
+    // =========================
+
+    public List<SecurityEvent> readSecurityEventsAfter(
+            long lastRecordId) {
 
         List<SecurityEvent> events =
                 new ArrayList<>();
 
-        String command = """
-                Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624,4625} -MaxEvents 100 |
-                ForEach-Object {
+        System.out.println(
+                "Last stored Windows RecordId: "
+                        + lastRecordId
+        );
 
-                    $xml = [xml]$_.ToXml()
-                    $data = @{}
+        String command;
 
-                    foreach ($item in $xml.Event.EventData.Data) {
-                        $data[$item.Name] = $item.'#text'
+        // First ever import
+        if (lastRecordId <= 0) {
+
+            command = """
+                    Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624,4625} -MaxEvents 100 |
+                    Sort-Object RecordId |
+                    ForEach-Object {
+
+                        $xml = [xml]$_.ToXml()
+                        $data = @{}
+
+                        foreach ($item in $xml.Event.EventData.Data) {
+                            $data[$item.Name] = $item.'#text'
+                        }
+
+                        $time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')
+                        $id = $_.Id
+                        $recordId = $_.RecordId
+                        $user = $data['TargetUserName']
+                        $ip = $data['IpAddress']
+
+                        $values = @(
+                            $time,
+                            $id,
+                            $recordId,
+                            $user,
+                            $ip
+                        )
+
+                        $output = [string]::Join(
+                            [char]124,
+                            $values
+                        )
+
+                        Write-Output $output
                     }
+                    """;
 
-                    $time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')
-                    $id = $_.Id
-                    $recordId = $_.RecordId
-                    $user = $data['TargetUserName']
-                    $ip = $data['IpAddress']
+        } else {
 
-                    $values = @(
-                        $time,
-                        $id,
-                        $recordId,
-                        $user,
-                        $ip
-                    )
-
-                    $output = [string]::Join(
-                        [char]124,
-                        $values
-                    )
-
-                    Write-Output $output
-                }
-                """;
+            command =
+                    "Get-WinEvent "
+                            + "-LogName 'Security' "
+                            + "-FilterXPath "
+                            + "\"*[System["
+                            + "((EventID=4624) or (EventID=4625)) "
+                            + "and (EventRecordID > "
+                            + lastRecordId
+                            + ")"
+                            + "]]\" "
+                            + "-Oldest "
+                            + "| ForEach-Object { "
+                            + "$xml = [xml]$_.ToXml(); "
+                            + "$data = @{}; "
+                            + "foreach ($item in $xml.Event.EventData.Data) { "
+                            + "$data[$item.Name] = $item.'#text'; "
+                            + "} "
+                            + "$time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'); "
+                            + "$id = $_.Id; "
+                            + "$recordId = $_.RecordId; "
+                            + "$user = $data['TargetUserName']; "
+                            + "$ip = $data['IpAddress']; "
+                            + "$values = @($time,$id,$recordId,$user,$ip); "
+                            + "$output = [string]::Join([char]124,$values); "
+                            + "Write-Output $output; "
+                            + "}";
+        }
 
         ProcessBuilder processBuilder =
                 new ProcessBuilder(
@@ -69,7 +120,7 @@ public class WindowsEventLogReader {
                     processBuilder.start();
 
             // =========================
-            // NORMAL POWERSHELL OUTPUT
+            // NORMAL OUTPUT
             // =========================
 
             try (BufferedReader reader =
@@ -81,19 +132,23 @@ public class WindowsEventLogReader {
 
                 String line;
 
-                while ((line = reader.readLine()) != null) {
+                while ((line =
+                        reader.readLine()) != null) {
 
                     SecurityEvent event =
-                            parseWindowsEvent(line);
+                            parseWindowsEvent(
+                                    line
+                            );
 
                     if (event != null) {
+
                         events.add(event);
                     }
                 }
             }
 
             // =========================
-            // POWERSHELL ERROR OUTPUT
+            // ERROR OUTPUT
             // =========================
 
             StringBuilder errorOutput =
@@ -122,11 +177,6 @@ public class WindowsEventLogReader {
             int exitCode =
                     process.waitFor();
 
-            System.out.println(
-                    "PowerShell exit code: "
-                            + exitCode
-            );
-
             if (!errorOutput.isEmpty()) {
 
                 System.out.println(
@@ -141,13 +191,18 @@ public class WindowsEventLogReader {
             if (exitCode == 0) {
 
                 System.out.println(
-                        "Windows Security Event Log read successfully."
+                        "Windows Event Log query successful."
                 );
 
             } else {
 
                 System.out.println(
-                        "Could not read Windows Security Event Log."
+                        "Windows Event Log query failed."
+                );
+
+                System.out.println(
+                        "PowerShell exit code: "
+                                + exitCode
                 );
             }
 
@@ -160,16 +215,39 @@ public class WindowsEventLogReader {
             exception.printStackTrace();
         }
 
+        // Ensure increasing RecordId order
+        events.sort(
+                Comparator.comparingLong(
+                        event -> Long.parseLong(
+                                event.getSourceEventId()
+                        )
+                )
+        );
+
         System.out.println(
-                "Windows security events retrieved: "
+                "New Windows events found: "
                         + events.size()
         );
+
+        if (!events.isEmpty()) {
+
+            SecurityEvent newestEvent =
+                    events.get(
+                            events.size() - 1
+                    );
+
+            System.out.println(
+                    "Newest RecordId: "
+                            + newestEvent
+                            .getSourceEventId()
+            );
+        }
 
         return events;
     }
 
     // =========================
-    // PARSE ONE WINDOWS EVENT
+    // PARSE EVENT
     // =========================
 
     private SecurityEvent parseWindowsEvent(
@@ -177,23 +255,13 @@ public class WindowsEventLogReader {
 
         try {
 
-            /*
-             * Expected PowerShell format:
-             *
-             * timestamp|eventId|recordId|username|ipAddress
-             */
-
             String[] parts =
-                    line.split("\\|", -1);
+                    line.split(
+                            "\\|",
+                            -1
+                    );
 
             if (parts.length < 5) {
-
-                System.out.println(
-                        "Invalid Windows event line:"
-                );
-
-                System.out.println(line);
-
                 return null;
             }
 
@@ -234,10 +302,6 @@ public class WindowsEventLogReader {
                 return null;
             }
 
-            // =========================
-            // CLEAN USERNAME
-            // =========================
-
             if (username.isBlank()
                     || username.equals("-")) {
 
@@ -245,45 +309,26 @@ public class WindowsEventLogReader {
                         "UNKNOWN";
             }
 
-            // =========================
-            // CLEAN IP ADDRESS
-            // =========================
-
             if (ipAddress.isBlank()
                     || ipAddress.equals("-")
                     || ipAddress.equals("::1")
-                    || ipAddress.equals("127.0.0.1")) {
+                    || ipAddress.equals(
+                    "127.0.0.1"
+            )) {
 
                 ipAddress =
                         "LOCAL";
             }
 
-            // =========================
-            // VALIDATE RECORD ID
-            // =========================
-
             if (recordId.isBlank()) {
-
-                System.out.println(
-                        "Windows event has no RecordId."
-                );
-
                 return null;
             }
-
-            // =========================
-            // PARSE TIMESTAMP
-            // =========================
 
             LocalDateTime timestamp =
                     LocalDateTime.parse(
                             timestampText,
                             DATE_FORMAT
                     );
-
-            // =========================
-            // CREATE SECURITY EVENT
-            // =========================
 
             return new SecurityEvent(
                     timestamp,
@@ -296,7 +341,7 @@ public class WindowsEventLogReader {
         } catch (Exception exception) {
 
             System.out.println(
-                    "Could not parse Windows event line:"
+                    "Could not parse Windows event:"
             );
 
             System.out.println(line);
