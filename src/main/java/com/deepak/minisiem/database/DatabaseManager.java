@@ -6,8 +6,14 @@ import com.deepak.minisiem.model.SecurityEvent;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+
+import java.time.LocalDateTime;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class DatabaseManager {
 
@@ -29,7 +35,7 @@ public class DatabaseManager {
         }
     }
 
-    // Create tables and unique index
+    // Create database tables
     public void createTables() {
 
         String createEventsTable = """
@@ -81,7 +87,7 @@ public class DatabaseManager {
         }
     }
 
-    // Save one SecurityEvent
+    // Save one SecurityEvent into SQLite
     public void saveEvent(SecurityEvent event) {
 
         String sql = """
@@ -127,7 +133,7 @@ public class DatabaseManager {
         }
     }
 
-    // Save one SecurityAlert
+    // Save one SecurityAlert into SQLite
     public void saveAlert(SecurityAlert alert) {
 
         String sql = """
@@ -179,14 +185,14 @@ public class DatabaseManager {
         }
     }
 
-    // Count events in database
+    // Count events stored in database
     public int getEventCount() {
 
         String sql = "SELECT COUNT(*) FROM events;";
 
         try (Connection connection = connect();
              Statement statement = connection.createStatement();
-             var resultSet = statement.executeQuery(sql)) {
+             ResultSet resultSet = statement.executeQuery(sql)) {
 
             if (resultSet.next()) {
                 return resultSet.getInt(1);
@@ -201,14 +207,14 @@ public class DatabaseManager {
         return 0;
     }
 
-    // Count alerts in database
+    // Count alerts stored in database
     public int getAlertCount() {
 
         String sql = "SELECT COUNT(*) FROM alerts;";
 
         try (Connection connection = connect();
              Statement statement = connection.createStatement();
-             var resultSet = statement.executeQuery(sql)) {
+             ResultSet resultSet = statement.executeQuery(sql)) {
 
             if (resultSet.next()) {
                 return resultSet.getInt(1);
@@ -221,5 +227,114 @@ public class DatabaseManager {
         }
 
         return 0;
+    }
+
+    // Load all SecurityEvents from SQLite
+    public List<SecurityEvent> getAllEvents() {
+
+        List<SecurityEvent> events = new ArrayList<>();
+
+        String sql = """
+                SELECT timestamp,
+                       event_type,
+                       username,
+                       ip_address
+                FROM events
+                ORDER BY timestamp;
+                """;
+
+        try (Connection connection = connect();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+
+            while (resultSet.next()) {
+
+                LocalDateTime timestamp =
+                        LocalDateTime.parse(
+                                resultSet.getString("timestamp")
+                        );
+
+                String eventType =
+                        resultSet.getString("event_type");
+
+                String username =
+                        resultSet.getString("username");
+
+                String ipAddress =
+                        resultSet.getString("ip_address");
+
+                SecurityEvent event = new SecurityEvent(
+                        timestamp,
+                        eventType,
+                        username,
+                        ipAddress
+                );
+
+                events.add(event);
+            }
+
+        } catch (SQLException exception) {
+
+            System.out.println("Could not load security events.");
+            System.out.println("Reason: " + exception.getMessage());
+        }
+
+        return events;
+    }
+
+    // Load all SecurityAlerts from SQLite
+    public List<SecurityAlert> getAllAlerts() {
+
+        List<SecurityAlert> alerts = new ArrayList<>();
+
+        String sql = """
+                SELECT alert_type,
+                       severity,
+                       username,
+                       ip_address,
+                       message
+                FROM alerts
+                ORDER BY id;
+                """;
+
+        try (Connection connection = connect();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+
+            while (resultSet.next()) {
+
+                String alertType =
+                        resultSet.getString("alert_type");
+
+                String severity =
+                        resultSet.getString("severity");
+
+                String username =
+                        resultSet.getString("username");
+
+                String ipAddress =
+                        resultSet.getString("ip_address");
+
+                String message =
+                        resultSet.getString("message");
+
+                SecurityAlert alert = new SecurityAlert(
+                        alertType,
+                        severity,
+                        username,
+                        ipAddress,
+                        message
+                );
+
+                alerts.add(alert);
+            }
+
+        } catch (SQLException exception) {
+
+            System.out.println("Could not load security alerts.");
+            System.out.println("Reason: " + exception.getMessage());
+        }
+
+        return alerts;
     }
 }

@@ -16,9 +16,6 @@ public class Main {
     public static void main(String[] args) {
 
         System.out.println("===== MINI SIEM =====");
-        System.out.println(
-                "Working directory: " + System.getProperty("user.dir")
-        );
 
         // Create application components
         LogReader logReader = new LogReader();
@@ -28,21 +25,21 @@ public class Main {
         DetectionEngine detectionEngine = new DetectionEngine();
         DatabaseManager databaseManager = new DatabaseManager();
 
-        // Initialize SQLite database tables
+        // Initialize SQLite tables
         databaseManager.createTables();
 
         // Read authentication log file
         List<String> logLines = logReader.readLogFile();
 
-        // Parse and store security events
+        // Parse and store events
         for (String line : logLines) {
 
             SecurityEvent event = logParser.parse(line);
 
-            // Store temporarily in RAM
+            // Store in RAM
             eventStore.addEvent(event);
 
-            // Store permanently in SQLite
+            // Store in SQLite
             databaseManager.saveEvent(event);
         }
 
@@ -50,17 +47,17 @@ public class Main {
                 "Total Events Loaded: " + eventStore.getEventCount()
         );
 
-        // Run all security detectors
+        // Run all detection algorithms
         List<SecurityAlert> detectedAlerts =
                 detectionEngine.detect(eventStore.getEvents());
 
         // Store detected alerts
         for (SecurityAlert alert : detectedAlerts) {
 
-            // Store temporarily in RAM
+            // Store in RAM
             alertStore.addAlert(alert);
 
-            // Store permanently in SQLite
+            // Store in SQLite
             databaseManager.saveAlert(alert);
         }
 
@@ -68,29 +65,19 @@ public class Main {
                 "Total Alerts: " + alertStore.getAlertCount()
         );
 
-        // Display security alerts
+        // Display alerts detected during this run
         for (SecurityAlert alert : alertStore.getAlerts()) {
 
             System.out.println();
             System.out.println("===== SECURITY ALERT =====");
-            System.out.println(
-                    "Type      : " + alert.getAlertType()
-            );
-            System.out.println(
-                    "Severity  : " + alert.getSeverity()
-            );
-            System.out.println(
-                    "Username  : " + alert.getUsername()
-            );
-            System.out.println(
-                    "IP Address: " + alert.getIpAddress()
-            );
-            System.out.println(
-                    "Message   : " + alert.getMessage()
-            );
+            System.out.println("Type      : " + alert.getAlertType());
+            System.out.println("Severity  : " + alert.getSeverity());
+            System.out.println("Username  : " + alert.getUsername());
+            System.out.println("IP Address: " + alert.getIpAddress());
+            System.out.println("Message   : " + alert.getMessage());
         }
 
-        // Display SQLite database statistics
+        // Display database statistics
         System.out.println();
         System.out.println("===== DATABASE =====");
 
@@ -103,5 +90,46 @@ public class Main {
                 "Alerts in database: "
                         + databaseManager.getAlertCount()
         );
+
+        // Load all events back from SQLite
+        List<SecurityEvent> databaseEvents =
+                databaseManager.getAllEvents();
+
+        System.out.println();
+        System.out.println(
+                "===== EVENTS LOADED FROM DATABASE ====="
+        );
+
+        for (SecurityEvent event : databaseEvents) {
+
+            System.out.println(
+                    event.getTimestamp()
+                            + " | "
+                            + event.getEventType()
+                            + " | "
+                            + event.getUsername()
+                            + " | "
+                            + event.getIpAddress()
+            );
+        }
+
+        // Load all alerts back from SQLite
+        List<SecurityAlert> databaseAlerts =
+                databaseManager.getAllAlerts();
+
+        System.out.println();
+        System.out.println(
+                "===== ALERTS LOADED FROM DATABASE ====="
+        );
+
+        for (SecurityAlert alert : databaseAlerts) {
+
+            System.out.println();
+            System.out.println("Type      : " + alert.getAlertType());
+            System.out.println("Severity  : " + alert.getSeverity());
+            System.out.println("Username  : " + alert.getUsername());
+            System.out.println("IP Address: " + alert.getIpAddress());
+            System.out.println("Message   : " + alert.getMessage());
+        }
     }
 }

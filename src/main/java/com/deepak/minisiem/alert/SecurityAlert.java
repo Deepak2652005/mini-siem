@@ -2,12 +2,13 @@ package com.deepak.minisiem.alert;
 
 public class SecurityAlert {
 
-    private String alertType;
-    private String severity;
-    private String username;
-    private String ipAddress;
-    private String message;
+    private final String alertType;
+    private final String severity;
+    private final String username;
+    private final String ipAddress;
+    private final String message;
 
+    // Constructor
     public SecurityAlert(
             String alertType,
             String severity,
@@ -22,24 +23,28 @@ public class SecurityAlert {
         this.message = message;
     }
 
+    // Get alert type
     public String getAlertType() {
         return alertType;
     }
 
+    // Get severity level
     public String getSeverity() {
         return severity;
     }
 
+    // Get affected username
     public String getUsername() {
         return username;
     }
 
+    // Get source IP address
     public String getIpAddress() {
         return ipAddress;
     }
 
+    // Get alert message
     public String getMessage() {
         return message;
     }
-
 }

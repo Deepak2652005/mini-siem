@@ -9,6 +9,7 @@ public class SecurityEvent {
     private final String username;
     private final String ipAddress;
 
+    // Constructor
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
@@ -21,18 +22,22 @@ public class SecurityEvent {
         this.ipAddress = ipAddress;
     }
 
+    // Get event timestamp
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
 
+    // Get event type
     public String getEventType() {
         return eventType;
     }
 
+    // Get username
     public String getUsername() {
         return username;
     }
 
+    // Get IP address
     public String getIpAddress() {
         return ipAddress;
     }
