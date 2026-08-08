@@ -114,3 +114,13 @@
 .high-severity-value {
     -fx-text-fill: #ef4444;
 }
+.clock-time {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #38bdf8;
+}
+
+.clock-date {
+    -fx-font-size: 13px;
+    -fx-text-fill: #94a3b8;
+}
