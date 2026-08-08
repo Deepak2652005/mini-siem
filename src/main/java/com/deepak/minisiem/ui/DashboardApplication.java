@@ -6,6 +6,8 @@ import com.deepak.minisiem.model.SecurityEvent;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -13,6 +15,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
@@ -89,12 +92,8 @@ public class DashboardApplication extends Application {
         // Security Alerts
         // =========================
 
-        Label alertsTitle = new Label("SECURITY ALERTS");
-
-        alertsTitle.setStyle(
-                "-fx-font-size: 20px;" +
-                        "-fx-font-weight: bold;"
-        );
+        Label alertsTitle =
+                createSectionTitle("SECURITY ALERTS");
 
         TableView<SecurityAlert> alertTable =
                 createAlertTable(alerts);
@@ -103,15 +102,80 @@ public class DashboardApplication extends Application {
         // Security Events
         // =========================
 
-        Label eventsTitle = new Label("SECURITY EVENTS");
+        Label eventsTitle =
+                createSectionTitle("SECURITY EVENTS");
 
-        eventsTitle.setStyle(
-                "-fx-font-size: 20px;" +
-                        "-fx-font-weight: bold;"
+        // Original event data
+        ObservableList<SecurityEvent> eventData =
+                FXCollections.observableArrayList(events);
+
+        // Filtered version of event data
+        FilteredList<SecurityEvent> filteredEvents =
+                new FilteredList<>(eventData, event -> true);
+
+        // =========================
+        // Search box
+        // =========================
+
+        TextField searchField = new TextField();
+
+        searchField.setPromptText(
+                "Search by username, IP address, event type..."
+        );
+
+        searchField.setMaxWidth(500);
+
+        searchField.setPrefHeight(38);
+
+        // Run whenever user types something
+        searchField.textProperty().addListener(
+                (observable, oldValue, newValue) -> {
+
+                    String searchText =
+                            newValue.trim().toLowerCase();
+
+                    filteredEvents.setPredicate(event -> {
+
+                        // Empty search = show everything
+                        if (searchText.isEmpty()) {
+                            return true;
+                        }
+
+                        boolean usernameMatch =
+                                event.getUsername() != null &&
+                                        event.getUsername()
+                                                .toLowerCase()
+                                                .contains(searchText);
+
+                        boolean ipMatch =
+                                event.getIpAddress() != null &&
+                                        event.getIpAddress()
+                                                .toLowerCase()
+                                                .contains(searchText);
+
+                        boolean eventTypeMatch =
+                                event.getEventType() != null &&
+                                        event.getEventType()
+                                                .toLowerCase()
+                                                .contains(searchText);
+
+                        boolean timestampMatch =
+                                event.getTimestamp() != null &&
+                                        event.getTimestamp()
+                                                .toString()
+                                                .toLowerCase()
+                                                .contains(searchText);
+
+                        return usernameMatch
+                                || ipMatch
+                                || eventTypeMatch
+                                || timestampMatch;
+                    });
+                }
         );
 
         TableView<SecurityEvent> eventTable =
-                createEventTable(events);
+                createEventTable(filteredEvents);
 
         // =========================
         // Dashboard content
@@ -124,14 +188,22 @@ public class DashboardApplication extends Application {
                 alertsTitle,
                 alertTable,
                 eventsTitle,
+                searchField,
                 eventTable
         );
 
         content.setAlignment(Pos.TOP_CENTER);
-        content.setPadding(new Insets(40));
 
-        // Allows dashboard to scroll
-        ScrollPane scrollPane = new ScrollPane(content);
+        content.setPadding(
+                new Insets(40)
+        );
+
+        // =========================
+        // Scroll pane
+        // =========================
+
+        ScrollPane scrollPane =
+                new ScrollPane(content);
 
         scrollPane.setFitToWidth(true);
         scrollPane.setPannable(true);
@@ -146,10 +218,29 @@ public class DashboardApplication extends Application {
                 750
         );
 
-        stage.setTitle("Mini SIEM Dashboard");
+        stage.setTitle(
+                "Mini SIEM Dashboard"
+        );
+
         stage.setScene(scene);
 
         stage.show();
+    }
+
+    // =========================
+    // Create section title
+    // =========================
+
+    private Label createSectionTitle(String text) {
+
+        Label label = new Label(text);
+
+        label.setStyle(
+                "-fx-font-size: 20px;" +
+                        "-fx-font-weight: bold;"
+        );
+
+        return label;
     }
 
     // =========================
@@ -223,7 +314,7 @@ public class DashboardApplication extends Application {
     // =========================
 
     private TableView<SecurityEvent> createEventTable(
-            List<SecurityEvent> events) {
+            ObservableList<SecurityEvent> events) {
 
         TableView<SecurityEvent> table =
                 new TableView<>();
@@ -263,9 +354,7 @@ public class DashboardApplication extends Application {
                 ipColumn
         );
 
-        table.setItems(
-                FXCollections.observableArrayList(events)
-        );
+        table.setItems(events);
 
         table.setColumnResizePolicy(
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN
@@ -284,8 +373,11 @@ public class DashboardApplication extends Application {
             String titleText,
             String valueText) {
 
-        Label title = new Label(titleText);
-        Label value = new Label(valueText);
+        Label title =
+                new Label(titleText);
+
+        Label value =
+                new Label(valueText);
 
         title.setStyle(
                 "-fx-font-size: 16px;"
