@@ -16,6 +16,9 @@ public class Main {
     public static void main(String[] args) {
 
         System.out.println("===== MINI SIEM =====");
+        System.out.println(
+                "Working directory: " + System.getProperty("user.dir")
+        );
 
         // Create application components
         LogReader logReader = new LogReader();
@@ -25,18 +28,18 @@ public class Main {
         DetectionEngine detectionEngine = new DetectionEngine();
         DatabaseManager databaseManager = new DatabaseManager();
 
-        // Create SQLite tables if they do not already exist
+        // Initialize SQLite database tables
         databaseManager.createTables();
 
         // Read authentication log file
         List<String> logLines = logReader.readLogFile();
 
-        // Parse, store in memory, and save events to SQLite
+        // Parse and store security events
         for (String line : logLines) {
 
             SecurityEvent event = logParser.parse(line);
 
-            // Store in RAM
+            // Store temporarily in RAM
             eventStore.addEvent(event);
 
             // Store permanently in SQLite
@@ -47,13 +50,18 @@ public class Main {
                 "Total Events Loaded: " + eventStore.getEventCount()
         );
 
-        // Run all detection algorithms
+        // Run all security detectors
         List<SecurityAlert> detectedAlerts =
                 detectionEngine.detect(eventStore.getEvents());
 
-        // Store detected alerts in memory
+        // Store detected alerts
         for (SecurityAlert alert : detectedAlerts) {
+
+            // Store temporarily in RAM
             alertStore.addAlert(alert);
+
+            // Store permanently in SQLite
+            databaseManager.saveAlert(alert);
         }
 
         System.out.println(
@@ -65,11 +73,35 @@ public class Main {
 
             System.out.println();
             System.out.println("===== SECURITY ALERT =====");
-            System.out.println("Type      : " + alert.getAlertType());
-            System.out.println("Severity  : " + alert.getSeverity());
-            System.out.println("Username  : " + alert.getUsername());
-            System.out.println("IP Address: " + alert.getIpAddress());
-            System.out.println("Message   : " + alert.getMessage());
+            System.out.println(
+                    "Type      : " + alert.getAlertType()
+            );
+            System.out.println(
+                    "Severity  : " + alert.getSeverity()
+            );
+            System.out.println(
+                    "Username  : " + alert.getUsername()
+            );
+            System.out.println(
+                    "IP Address: " + alert.getIpAddress()
+            );
+            System.out.println(
+                    "Message   : " + alert.getMessage()
+            );
         }
+
+        // Display SQLite database statistics
+        System.out.println();
+        System.out.println("===== DATABASE =====");
+
+        System.out.println(
+                "Events in database: "
+                        + databaseManager.getEventCount()
+        );
+
+        System.out.println(
+                "Alerts in database: "
+                        + databaseManager.getAlertCount()
+        );
     }
 }

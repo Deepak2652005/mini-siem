@@ -1,5 +1,6 @@
 package com.deepak.minisiem.database;
 
+import com.deepak.minisiem.alert.SecurityAlert;
 import com.deepak.minisiem.model.SecurityEvent;
 
 import java.sql.Connection;
@@ -17,7 +18,6 @@ public class DatabaseManager {
     public Connection connect() {
 
         try {
-
             return DriverManager.getConnection(DATABASE_URL);
 
         } catch (SQLException exception) {
@@ -29,7 +29,7 @@ public class DatabaseManager {
         }
     }
 
-    // Create database tables
+    // Create tables and unique index
     public void createTables() {
 
         String createEventsTable = """
@@ -38,7 +38,8 @@ public class DatabaseManager {
                     timestamp TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     username TEXT NOT NULL,
-                    ip_address TEXT NOT NULL
+                    ip_address TEXT NOT NULL,
+                    UNIQUE(timestamp, event_type, username, ip_address)
                 );
                 """;
 
@@ -53,11 +54,23 @@ public class DatabaseManager {
                 );
                 """;
 
+        String createAlertUniqueIndex = """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert
+                ON alerts (
+                    alert_type,
+                    severity,
+                    username,
+                    ip_address,
+                    message
+                );
+                """;
+
         try (Connection connection = connect();
              Statement statement = connection.createStatement()) {
 
             statement.execute(createEventsTable);
             statement.execute(createAlertsTable);
+            statement.execute(createAlertUniqueIndex);
 
             System.out.println("Database tables initialized.");
 
@@ -68,11 +81,11 @@ public class DatabaseManager {
         }
     }
 
-    // Save one SecurityEvent into SQLite
+    // Save one SecurityEvent
     public void saveEvent(SecurityEvent event) {
 
         String sql = """
-                INSERT INTO events (
+                INSERT OR IGNORE INTO events (
                     timestamp,
                     event_type,
                     username,
@@ -112,5 +125,101 @@ public class DatabaseManager {
             System.out.println("Could not save security event.");
             System.out.println("Reason: " + exception.getMessage());
         }
+    }
+
+    // Save one SecurityAlert
+    public void saveAlert(SecurityAlert alert) {
+
+        String sql = """
+                INSERT OR IGNORE INTO alerts (
+                    alert_type,
+                    severity,
+                    username,
+                    ip_address,
+                    message
+                )
+                VALUES (?, ?, ?, ?, ?);
+                """;
+
+        try (Connection connection = connect();
+             PreparedStatement statement =
+                     connection.prepareStatement(sql)) {
+
+            statement.setString(
+                    1,
+                    alert.getAlertType()
+            );
+
+            statement.setString(
+                    2,
+                    alert.getSeverity()
+            );
+
+            statement.setString(
+                    3,
+                    alert.getUsername()
+            );
+
+            statement.setString(
+                    4,
+                    alert.getIpAddress()
+            );
+
+            statement.setString(
+                    5,
+                    alert.getMessage()
+            );
+
+            statement.executeUpdate();
+
+        } catch (SQLException exception) {
+
+            System.out.println("Could not save security alert.");
+            System.out.println("Reason: " + exception.getMessage());
+        }
+    }
+
+    // Count events in database
+    public int getEventCount() {
+
+        String sql = "SELECT COUNT(*) FROM events;";
+
+        try (Connection connection = connect();
+             Statement statement = connection.createStatement();
+             var resultSet = statement.executeQuery(sql)) {
+
+            if (resultSet.next()) {
+                return resultSet.getInt(1);
+            }
+
+        } catch (SQLException exception) {
+
+            System.out.println("Could not count database events.");
+            System.out.println("Reason: " + exception.getMessage());
+        }
+
+        return 0;
+    }
+
+    // Count alerts in database
+    public int getAlertCount() {
+
+        String sql = "SELECT COUNT(*) FROM alerts;";
+
+        try (Connection connection = connect();
+             Statement statement = connection.createStatement();
+             var resultSet = statement.executeQuery(sql)) {
+
+            if (resultSet.next()) {
+                return resultSet.getInt(1);
+            }
+
+        } catch (SQLException exception) {
+
+            System.out.println("Could not count database alerts.");
+            System.out.println("Reason: " + exception.getMessage());
+        }
+
+        return 0;
     }
 }
