@@ -1,135 +1,30 @@
 package com.deepak.minisiem;
 
-import com.deepak.minisiem.alert.SecurityAlert;
-import com.deepak.minisiem.database.DatabaseManager;
-import com.deepak.minisiem.engine.DetectionEngine;
-import com.deepak.minisiem.model.SecurityEvent;
-import com.deepak.minisiem.parser.LogParser;
-import com.deepak.minisiem.reader.LogReader;
-import com.deepak.minisiem.service.AlertStore;
-import com.deepak.minisiem.service.EventStore;
-
-import java.util.List;
+import com.deepak.minisiem.ui.DashboardApplication;
+import javafx.application.Application;
 
 public class Main {
 
     public static void main(String[] args) {
 
-        System.out.println("===== MINI SIEM =====");
+        System.out.println("================================");
+        System.out.println("       MINI SIEM STARTING");
+        System.out.println("================================");
 
-        // Create application components
-        LogReader logReader = new LogReader();
-        LogParser logParser = new LogParser();
-        EventStore eventStore = new EventStore();
-        AlertStore alertStore = new AlertStore();
-        DetectionEngine detectionEngine = new DetectionEngine();
-        DatabaseManager databaseManager = new DatabaseManager();
+        try {
 
-        // Initialize SQLite tables
-        databaseManager.createTables();
-
-        // Read authentication log file
-        List<String> logLines = logReader.readLogFile();
-
-        // Parse and store events
-        for (String line : logLines) {
-
-            SecurityEvent event = logParser.parse(line);
-
-            // Store in RAM
-            eventStore.addEvent(event);
-
-            // Store in SQLite
-            databaseManager.saveEvent(event);
-        }
-
-        System.out.println(
-                "Total Events Loaded: " + eventStore.getEventCount()
-        );
-
-        // Run all detection algorithms
-        List<SecurityAlert> detectedAlerts =
-                detectionEngine.detect(eventStore.getEvents());
-
-        // Store detected alerts
-        for (SecurityAlert alert : detectedAlerts) {
-
-            // Store in RAM
-            alertStore.addAlert(alert);
-
-            // Store in SQLite
-            databaseManager.saveAlert(alert);
-        }
-
-        System.out.println(
-                "Total Alerts: " + alertStore.getAlertCount()
-        );
-
-        // Display alerts detected during this run
-        for (SecurityAlert alert : alertStore.getAlerts()) {
-
-            System.out.println();
-            System.out.println("===== SECURITY ALERT =====");
-            System.out.println("Type      : " + alert.getAlertType());
-            System.out.println("Severity  : " + alert.getSeverity());
-            System.out.println("Username  : " + alert.getUsername());
-            System.out.println("IP Address: " + alert.getIpAddress());
-            System.out.println("Message   : " + alert.getMessage());
-        }
-
-        // Display database statistics
-        System.out.println();
-        System.out.println("===== DATABASE =====");
-
-        System.out.println(
-                "Events in database: "
-                        + databaseManager.getEventCount()
-        );
-
-        System.out.println(
-                "Alerts in database: "
-                        + databaseManager.getAlertCount()
-        );
-
-        // Load all events back from SQLite
-        List<SecurityEvent> databaseEvents =
-                databaseManager.getAllEvents();
-
-        System.out.println();
-        System.out.println(
-                "===== EVENTS LOADED FROM DATABASE ====="
-        );
-
-        for (SecurityEvent event : databaseEvents) {
-
-            System.out.println(
-                    event.getTimestamp()
-                            + " | "
-                            + event.getEventType()
-                            + " | "
-                            + event.getUsername()
-                            + " | "
-                            + event.getIpAddress()
+            Application.launch(
+                    DashboardApplication.class,
+                    args
             );
-        }
 
-        // Load all alerts back from SQLite
-        List<SecurityAlert> databaseAlerts =
-                databaseManager.getAllAlerts();
+        } catch (Exception exception) {
 
-        System.out.println();
-        System.out.println(
-                "===== ALERTS LOADED FROM DATABASE ====="
-        );
+            System.err.println(
+                    "Failed to start Mini SIEM Dashboard."
+            );
 
-        for (SecurityAlert alert : databaseAlerts) {
-
-            System.out.println();
-            System.out.println("Type      : " + alert.getAlertType());
-            System.out.println("Severity  : " + alert.getSeverity());
-            System.out.println("Username  : " + alert.getUsername());
-            System.out.println("IP Address: " + alert.getIpAddress());
-            System.out.println("Message   : " + alert.getMessage());
+            exception.printStackTrace();
         }
     }
 }

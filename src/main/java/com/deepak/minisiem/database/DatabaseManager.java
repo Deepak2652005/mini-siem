@@ -21,7 +21,7 @@ public class DatabaseManager {
             "jdbc:sqlite:mini-siem.db";
 
     // =========================
-    // DATABASE CONNECTION
+    // CONNECTION
     // =========================
 
     public Connection connect() {
@@ -48,7 +48,7 @@ public class DatabaseManager {
     }
 
     // =========================
-    // CREATE / UPDATE TABLES
+    // CREATE / MIGRATE
     // =========================
 
     public void createTables() {
@@ -60,7 +60,9 @@ public class DatabaseManager {
                     event_type TEXT NOT NULL,
                     username TEXT NOT NULL,
                     ip_address TEXT NOT NULL,
-                    source_event_id TEXT
+                    source_event_id TEXT,
+                    details TEXT,
+                    command_line TEXT
                 );
                 """;
 
@@ -76,7 +78,8 @@ public class DatabaseManager {
                 """;
 
         String createAlertUniqueIndex = """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_alert
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_unique_alert
                 ON alerts (
                     alert_type,
                     severity,
@@ -102,11 +105,29 @@ public class DatabaseManager {
                     createAlertUniqueIndex
             );
 
-            addSourceEventIdColumnIfNeeded(
-                    connection
+            addColumnIfMissing(
+                    connection,
+                    "source_event_id",
+                    "TEXT"
+            );
+
+            addColumnIfMissing(
+                    connection,
+                    "details",
+                    "TEXT"
+            );
+
+            addColumnIfMissing(
+                    connection,
+                    "command_line",
+                    "TEXT"
             );
 
             createSourceEventIdIndex(
+                    connection
+            );
+
+            createDemoEventIndex(
                     connection
             );
 
@@ -128,65 +149,67 @@ public class DatabaseManager {
     }
 
     // =========================
-    // DATABASE MIGRATION
+    // MIGRATION
     // =========================
 
-    private void addSourceEventIdColumnIfNeeded(
-            Connection connection)
+    private void addColumnIfMissing(
+            Connection connection,
+            String columnName,
+            String columnType)
             throws SQLException {
 
-        boolean columnExists = false;
-
-        String sql =
-                "PRAGMA table_info(events);";
+        boolean exists = false;
 
         try (Statement statement =
                      connection.createStatement();
 
              ResultSet resultSet =
-                     statement.executeQuery(sql)) {
+                     statement.executeQuery(
+                             "PRAGMA table_info(events);"
+                     )) {
 
             while (resultSet.next()) {
 
-                String columnName =
+                String existingColumn =
                         resultSet.getString(
                                 "name"
                         );
 
-                if ("source_event_id"
-                        .equalsIgnoreCase(
-                                columnName
-                        )) {
+                if (columnName.equalsIgnoreCase(
+                        existingColumn
+                )) {
 
-                    columnExists = true;
+                    exists = true;
                     break;
                 }
             }
         }
 
-        if (!columnExists) {
+        if (!exists) {
 
-            String alterTable = """
-                    ALTER TABLE events
-                    ADD COLUMN source_event_id TEXT;
-                    """;
+            String sql =
+                    "ALTER TABLE events "
+                            + "ADD COLUMN "
+                            + columnName
+                            + " "
+                            + columnType
+                            + ";";
 
             try (Statement statement =
                          connection.createStatement()) {
 
-                statement.execute(
-                        alterTable
-                );
+                statement.execute(sql);
             }
 
             System.out.println(
-                    "source_event_id column added."
+                    columnName
+                            + " column added."
             );
         }
     }
 
     // =========================
-    // WINDOWS RECORD ID INDEX
+    // WINDOWS UNIQUE ID
     // =========================
 
     private void createSourceEventIdIndex(
@@ -198,6 +221,33 @@ public class DatabaseManager {
                 idx_unique_source_event
                 ON events(source_event_id)
                 WHERE source_event_id IS NOT NULL;
+                """;
+
+        try (Statement statement =
+                     connection.createStatement()) {
+
+            statement.execute(sql);
+        }
+    }
+
+    // =========================
+    // DEMO DUPLICATES
+    // =========================
+
+    private void createDemoEventIndex(
+            Connection connection)
+            throws SQLException {
+
+        String sql = """
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_unique_demo_event
+                ON events(
+                    timestamp,
+                    event_type,
+                    username,
+                    ip_address
+                )
+                WHERE source_event_id IS NULL;
                 """;
 
         try (Statement statement =
@@ -224,9 +274,11 @@ public class DatabaseManager {
                     event_type,
                     username,
                     ip_address,
-                    source_event_id
+                    source_event_id,
+                    details,
+                    command_line
                 )
-                VALUES (?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?);
                 """;
 
         try (Connection connection = connect();
@@ -257,6 +309,16 @@ public class DatabaseManager {
             statement.setString(
                     5,
                     event.getSourceEventId()
+            );
+
+            statement.setString(
+                    6,
+                    event.getDetails()
+            );
+
+            statement.setString(
+                    7,
+                    event.getCommandLine()
             );
 
             statement.executeUpdate();
@@ -341,7 +403,93 @@ public class DatabaseManager {
     }
 
     // =========================
-    // GET LATEST WINDOWS RECORD ID
+    // CLEAN OLD FALSE POSITIVES
+    // =========================
+
+    public int cleanupLegacyFalsePositiveAlerts() {
+
+        /*
+         * Remove old alerts created by the
+         * first overly broad process rule.
+         *
+         * SUSPICIOUS_PROCESS is no longer
+         * produced by the current engine.
+         */
+        String removeOldProcessAlerts = """
+                DELETE FROM alerts
+                WHERE alert_type = 'SUSPICIOUS_PROCESS';
+                """;
+
+        /*
+         * Remove ONLY SUSPICIOUS_POWERSHELL
+         * alerts generated by our own
+         * Get-WinEvent collector.
+         *
+         * Genuine PowerShell alerts are kept.
+         */
+        String removeCollectorAlerts = """
+                DELETE FROM alerts
+                WHERE alert_type = 'SUSPICIOUS_POWERSHELL'
+                  AND LOWER(message) LIKE '%get-winevent%'
+                  AND LOWER(message) LIKE '%filterhashtable%';
+                """;
+
+        int deletedCount = 0;
+
+        try (Connection connection = connect();
+             Statement statement =
+                     connection.createStatement()) {
+
+            int oldProcessDeleted =
+                    statement.executeUpdate(
+                            removeOldProcessAlerts
+                    );
+
+            int collectorDeleted =
+                    statement.executeUpdate(
+                            removeCollectorAlerts
+                    );
+
+            deletedCount =
+                    oldProcessDeleted
+                            + collectorDeleted;
+
+            System.out.println(
+                    "===== ALERT CLEANUP ====="
+            );
+
+            System.out.println(
+                    "Old SUSPICIOUS_PROCESS alerts removed: "
+                            + oldProcessDeleted
+            );
+
+            System.out.println(
+                    "Collector false-positive alerts removed: "
+                            + collectorDeleted
+            );
+
+            System.out.println(
+                    "Total alerts removed: "
+                            + deletedCount
+            );
+
+        } catch (SQLException exception) {
+
+            System.out.println(
+                    "Could not clean old alerts."
+            );
+
+            System.out.println(
+                    "Reason: "
+                            + exception.getMessage()
+            );
+        }
+
+        return deletedCount;
+    }
+
+    // =========================
+    // LAST WINDOWS RECORD ID
     // =========================
 
     public long getLatestSourceEventId() {
@@ -352,7 +500,7 @@ public class DatabaseManager {
                 )
                 FROM events
                 WHERE source_event_id IS NOT NULL
-                  AND source_event_id != '';
+                AND source_event_id != '';
                 """;
 
         try (Connection connection = connect();
@@ -370,11 +518,6 @@ public class DatabaseManager {
 
             System.out.println(
                     "Could not get latest Windows RecordId."
-            );
-
-            System.out.println(
-                    "Reason: "
-                            + exception.getMessage()
             );
         }
 
@@ -404,7 +547,7 @@ public class DatabaseManager {
         } catch (SQLException exception) {
 
             System.out.println(
-                    "Could not count database events."
+                    "Could not count events."
             );
         }
 
@@ -434,7 +577,7 @@ public class DatabaseManager {
         } catch (SQLException exception) {
 
             System.out.println(
-                    "Could not count database alerts."
+                    "Could not count alerts."
             );
         }
 
@@ -456,7 +599,9 @@ public class DatabaseManager {
                     event_type,
                     username,
                     ip_address,
-                    source_event_id
+                    source_event_id,
+                    details,
+                    command_line
                 FROM events
                 ORDER BY timestamp;
                 """;
@@ -490,6 +635,12 @@ public class DatabaseManager {
                                 ),
                                 resultSet.getString(
                                         "source_event_id"
+                                ),
+                                resultSet.getString(
+                                        "details"
+                                ),
+                                resultSet.getString(
+                                        "command_line"
                                 )
                         );
 
@@ -499,7 +650,7 @@ public class DatabaseManager {
         } catch (SQLException exception) {
 
             System.out.println(
-                    "Could not load security events."
+                    "Could not load events."
             );
 
             System.out.println(
@@ -539,7 +690,7 @@ public class DatabaseManager {
 
             while (resultSet.next()) {
 
-                SecurityAlert alert =
+                alerts.add(
                         new SecurityAlert(
                                 resultSet.getString(
                                         "alert_type"
@@ -556,20 +707,14 @@ public class DatabaseManager {
                                 resultSet.getString(
                                         "message"
                                 )
-                        );
-
-                alerts.add(alert);
+                        )
+                );
             }
 
         } catch (SQLException exception) {
 
             System.out.println(
-                    "Could not load security alerts."
-            );
-
-            System.out.println(
-                    "Reason: "
-                            + exception.getMessage()
+                    "Could not load alerts."
             );
         }
 

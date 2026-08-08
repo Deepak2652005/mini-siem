@@ -20,14 +20,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.chart.PieChart;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.TableCell;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -38,6 +31,7 @@ import javafx.util.Duration;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -75,7 +69,7 @@ public class DashboardApplication extends Application {
             FXCollections.observableArrayList();
 
     // =========================
-    // COMPONENTS
+    // UI
     // =========================
 
     private Label totalEventsValue;
@@ -99,7 +93,8 @@ public class DashboardApplication extends Application {
     private Timeline clockTimeline;
     private Timeline windowsRefreshTimeline;
 
-    private boolean windowsRefreshRunning = false;
+    private boolean windowsRefreshRunning =
+            false;
 
     @Override
     public void start(Stage stage) {
@@ -119,8 +114,11 @@ public class DashboardApplication extends Application {
                 "dashboard-title"
         );
 
-        clockLabel = new Label();
-        dateLabel = new Label();
+        clockLabel =
+                new Label();
+
+        dateLabel =
+                new Label();
 
         clockLabel
                 .getStyleClass()
@@ -164,7 +162,7 @@ public class DashboardApplication extends Application {
         startClock();
 
         // =========================
-        // CARDS
+        // SUMMARY CARDS
         // =========================
 
         totalEventsValue =
@@ -241,9 +239,7 @@ public class DashboardApplication extends Application {
         );
 
         monitoringStatusLabel =
-                new Label(
-                        "DEMO MODE"
-                );
+                new Label();
 
         setStatusDemo();
 
@@ -260,6 +256,7 @@ public class DashboardApplication extends Application {
             } else {
 
                 processDemoLogs();
+
                 refreshData();
             }
         });
@@ -296,7 +293,7 @@ public class DashboardApplication extends Application {
         );
 
         // =========================
-        // ALERTS
+        // SECURITY ALERTS
         // =========================
 
         Label alertsTitle =
@@ -314,11 +311,11 @@ public class DashboardApplication extends Application {
                 new TextField();
 
         alertSearch.setPromptText(
-                "Search alerts by type, username, IP, message..."
+                "Search alert type, username, IP, message..."
         );
 
         alertSearch.setPrefWidth(
-                380
+                400
         );
 
         ComboBox<String> severityFilter =
@@ -337,6 +334,10 @@ public class DashboardApplication extends Application {
                 "ALL"
         );
 
+        severityFilter.setPrefWidth(
+                120
+        );
+
         ComboBox<String> typeFilter =
                 new ComboBox<>();
 
@@ -345,11 +346,19 @@ public class DashboardApplication extends Application {
                 .addAll(
                         "ALL",
                         "BRUTE_FORCE",
-                        "PASSWORD_SPRAY"
+                        "PASSWORD_SPRAY",
+                        "SUSPICIOUS_POWERSHELL",
+                        "SUSPICIOUS_COMMAND",
+                        "SCRIPT_EXECUTION",
+                        "LOLBIN_EXECUTION"
                 );
 
         typeFilter.setValue(
                 "ALL"
+        );
+
+        typeFilter.setPrefWidth(
+                220
         );
 
         Runnable updateAlertFilter = () -> {
@@ -426,25 +435,22 @@ public class DashboardApplication extends Application {
         alertSearch
                 .textProperty()
                 .addListener(
-                        (a, b, c) ->
-                                updateAlertFilter
-                                        .run()
+                        (observable, oldValue, newValue) ->
+                                updateAlertFilter.run()
                 );
 
         severityFilter
                 .valueProperty()
                 .addListener(
-                        (a, b, c) ->
-                                updateAlertFilter
-                                        .run()
+                        (observable, oldValue, newValue) ->
+                                updateAlertFilter.run()
                 );
 
         typeFilter
                 .valueProperty()
                 .addListener(
-                        (a, b, c) ->
-                                updateAlertFilter
-                                        .run()
+                        (observable, oldValue, newValue) ->
+                                updateAlertFilter.run()
                 );
 
         HBox alertFilters =
@@ -465,7 +471,29 @@ public class DashboardApplication extends Application {
                 );
 
         // =========================
-        // EVENTS
+        // DOUBLE CLICK ALERT
+        // =========================
+
+        alertTable.setOnMouseClicked(event -> {
+
+            if (event.getClickCount() == 2) {
+
+                SecurityAlert selectedAlert =
+                        alertTable
+                                .getSelectionModel()
+                                .getSelectedItem();
+
+                if (selectedAlert != null) {
+
+                    showAlertDetails(
+                            selectedAlert
+                    );
+                }
+            }
+        });
+
+        // =========================
+        // SECURITY EVENTS
         // =========================
 
         Label eventsTitle =
@@ -483,17 +511,17 @@ public class DashboardApplication extends Application {
                 new TextField();
 
         eventSearch.setPromptText(
-                "Search events by username, IP, event type..."
+                "Search event type, username, process, command line..."
         );
 
         eventSearch.setMaxWidth(
-                500
+                650
         );
 
         eventSearch
                 .textProperty()
                 .addListener(
-                        (a, b, value) -> {
+                        (observable, oldValue, value) -> {
 
                             String search =
                                     value
@@ -522,16 +550,15 @@ public class DashboardApplication extends Application {
                                                         .getEventType(),
                                                 search
                                         )
-                                                || (
+                                                || containsIgnoreCase(
                                                 securityEvent
-                                                        .getTimestamp()
-                                                        != null
-                                                        && containsIgnoreCase(
-                                                        securityEvent
-                                                                .getTimestamp()
-                                                                .toString(),
-                                                        search
-                                                )
+                                                        .getDetails(),
+                                                search
+                                        )
+                                                || containsIgnoreCase(
+                                                securityEvent
+                                                        .getCommandLine(),
+                                                search
                                         );
                                     }
                             );
@@ -570,7 +597,7 @@ public class DashboardApplication extends Application {
         );
 
         // =========================
-        // MAIN
+        // MAIN LAYOUT
         // =========================
 
         VBox content =
@@ -612,8 +639,8 @@ public class DashboardApplication extends Application {
         Scene scene =
                 new Scene(
                         scrollPane,
-                        1100,
-                        750
+                        1300,
+                        820
                 );
 
         scene
@@ -642,6 +669,7 @@ public class DashboardApplication extends Application {
             stopWindowsAutoRefresh();
 
             if (clockTimeline != null) {
+
                 clockTimeline.stop();
             }
         });
@@ -756,9 +784,12 @@ public class DashboardApplication extends Application {
         for (SecurityEvent event
                 : windowsEvents) {
 
-            databaseManager.saveEvent(
-                    event
-            );
+            if (event != null) {
+
+                databaseManager.saveEvent(
+                        event
+                );
+            }
         }
 
         System.out.println(
@@ -775,16 +806,14 @@ public class DashboardApplication extends Application {
 
     private void runDetectionEngine() {
 
-        List<SecurityEvent> events =
-                databaseManager
-                        .getAllEvents();
-
         List<SecurityAlert> alerts =
                 detectionEngine.detect(
-                        events
+                        databaseManager
+                                .getAllEvents()
                 );
 
-        for (SecurityAlert alert : alerts) {
+        for (SecurityAlert alert
+                : alerts) {
 
             if (alert != null) {
 
@@ -796,7 +825,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // WINDOWS AUTO MONITORING
+    // WINDOWS LIVE
     // =========================
 
     private void startWindowsAutoRefresh() {
@@ -829,8 +858,7 @@ public class DashboardApplication extends Application {
 
     private void stopWindowsAutoRefresh() {
 
-        if (windowsRefreshTimeline
-                != null) {
+        if (windowsRefreshTimeline != null) {
 
             windowsRefreshTimeline.stop();
 
@@ -840,7 +868,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // BACKGROUND WINDOWS TASK
+    // WINDOWS BACKGROUND TASK
     // =========================
 
     private void runWindowsRefreshInBackground() {
@@ -890,8 +918,7 @@ public class DashboardApplication extends Application {
 
             setStatusError();
 
-            if (task.getException()
-                    != null) {
+            if (task.getException() != null) {
 
                 task.getException()
                         .printStackTrace();
@@ -921,8 +948,8 @@ public class DashboardApplication extends Application {
         );
 
         monitoringStatusLabel.setStyle(
-                "-fx-text-fill: #94a3b8;" +
-                        "-fx-font-weight: bold;"
+                "-fx-text-fill:#94a3b8;"
+                        + "-fx-font-weight:bold;"
         );
     }
 
@@ -933,8 +960,8 @@ public class DashboardApplication extends Application {
         );
 
         monitoringStatusLabel.setStyle(
-                "-fx-text-fill: #22c55e;" +
-                        "-fx-font-weight: bold;"
+                "-fx-text-fill:#22c55e;"
+                        + "-fx-font-weight:bold;"
         );
     }
 
@@ -945,8 +972,8 @@ public class DashboardApplication extends Application {
         );
 
         monitoringStatusLabel.setStyle(
-                "-fx-text-fill: #38bdf8;" +
-                        "-fx-font-weight: bold;"
+                "-fx-text-fill:#38bdf8;"
+                        + "-fx-font-weight:bold;"
         );
     }
 
@@ -957,13 +984,13 @@ public class DashboardApplication extends Application {
         );
 
         monitoringStatusLabel.setStyle(
-                "-fx-text-fill: #ef4444;" +
-                        "-fx-font-weight: bold;"
+                "-fx-text-fill:#ef4444;"
+                        + "-fx-font-weight:bold;"
         );
     }
 
     // =========================
-    // REFRESH UI
+    // REFRESH DASHBOARD
     // =========================
 
     private void refreshData() {
@@ -995,12 +1022,9 @@ public class DashboardApplication extends Application {
         long highCount =
                 alertData.stream()
                         .filter(alert ->
-                                alert.getSeverity()
-                                        != null
-                                        && alert
-                                        .getSeverity()
+                                "HIGH"
                                         .equalsIgnoreCase(
-                                                "HIGH"
+                                                alert.getSeverity()
                                         )
                         )
                         .count();
@@ -1029,9 +1053,17 @@ public class DashboardApplication extends Application {
                 "Event Types"
         );
 
+        chart.setLabelsVisible(
+                true
+        );
+
+        chart.setLegendVisible(
+                true
+        );
+
         chart.setPrefSize(
-                480,
-                350
+                520,
+                380
         );
 
         return chart;
@@ -1045,9 +1077,7 @@ public class DashboardApplication extends Application {
         for (SecurityEvent event
                 : eventData) {
 
-            if (event.getEventType()
-                    == null) {
-
+            if (event.getEventType() == null) {
                 continue;
             }
 
@@ -1095,9 +1125,17 @@ public class DashboardApplication extends Application {
                 "Alert Types"
         );
 
+        chart.setLabelsVisible(
+                true
+        );
+
+        chart.setLegendVisible(
+                true
+        );
+
         chart.setPrefSize(
-                480,
-                350
+                520,
+                380
         );
 
         return chart;
@@ -1111,9 +1149,7 @@ public class DashboardApplication extends Application {
         for (SecurityAlert alert
                 : alertData) {
 
-            if (alert.getAlertType()
-                    == null) {
-
+            if (alert.getAlertType() == null) {
                 continue;
             }
 
@@ -1149,7 +1185,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // UTIL
+    // UTILITIES
     // =========================
 
     private boolean containsIgnoreCase(
@@ -1244,20 +1280,20 @@ public class DashboardApplication extends Application {
 
                                     case "HIGH" ->
                                             setStyle(
-                                                    "-fx-text-fill:#ef4444;" +
-                                                            "-fx-font-weight:bold;"
+                                                    "-fx-text-fill:#ef4444;"
+                                                            + "-fx-font-weight:bold;"
                                             );
 
                                     case "MEDIUM" ->
                                             setStyle(
-                                                    "-fx-text-fill:#f59e0b;" +
-                                                            "-fx-font-weight:bold;"
+                                                    "-fx-text-fill:#f59e0b;"
+                                                            + "-fx-font-weight:bold;"
                                             );
 
                                     case "LOW" ->
                                             setStyle(
-                                                    "-fx-text-fill:#22c55e;" +
-                                                            "-fx-font-weight:bold;"
+                                                    "-fx-text-fill:#22c55e;"
+                                                            + "-fx-font-weight:bold;"
                                             );
 
                                     default ->
@@ -1318,7 +1354,7 @@ public class DashboardApplication extends Application {
         );
 
         table.setPrefHeight(
-                220
+                250
         );
 
         return table;
@@ -1346,6 +1382,10 @@ public class DashboardApplication extends Application {
                 )
         );
 
+        timestamp.setPrefWidth(
+                180
+        );
+
         TableColumn<SecurityEvent, String> type =
                 new TableColumn<>(
                         "Event Type"
@@ -1355,6 +1395,10 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>(
                         "eventType"
                 )
+        );
+
+        type.setPrefWidth(
+                170
         );
 
         TableColumn<SecurityEvent, String> username =
@@ -1368,6 +1412,10 @@ public class DashboardApplication extends Application {
                 )
         );
 
+        username.setPrefWidth(
+                140
+        );
+
         TableColumn<SecurityEvent, String> ip =
                 new TableColumn<>(
                         "IP Address"
@@ -1379,31 +1427,120 @@ public class DashboardApplication extends Application {
                 )
         );
 
+        ip.setPrefWidth(
+                130
+        );
+
+        TableColumn<SecurityEvent, String> process =
+                new TableColumn<>(
+                        "Process"
+                );
+
+        process.setCellValueFactory(
+                new PropertyValueFactory<>(
+                        "details"
+                )
+        );
+
+        process.setPrefWidth(
+                350
+        );
+
+        TableColumn<SecurityEvent, String> commandLine =
+                new TableColumn<>(
+                        "Command Line"
+                );
+
+        commandLine.setCellValueFactory(
+                new PropertyValueFactory<>(
+                        "commandLine"
+                )
+        );
+
+        commandLine.setPrefWidth(
+                500
+        );
+
         table.getColumns().addAll(
                 timestamp,
                 type,
                 username,
-                ip
+                ip,
+                process,
+                commandLine
         );
 
         table.setItems(
                 events
         );
 
-        table.setColumnResizePolicy(
-                TableView
-                        .CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN
-        );
-
         table.setPrefHeight(
-                320
+                400
         );
 
         return table;
     }
 
     // =========================
-    // CARD
+    // ALERT DETAILS POPUP
+    // =========================
+
+    private void showAlertDetails(
+            SecurityAlert alert) {
+
+        Alert dialog =
+                new Alert(
+                        Alert.AlertType.INFORMATION
+                );
+
+        dialog.setTitle(
+                "Security Alert Details"
+        );
+
+        dialog.setHeaderText(
+                alert.getAlertType()
+                        + " - "
+                        + alert.getSeverity()
+        );
+
+        String content =
+                "Type: "
+                        + alert.getAlertType()
+                        + "\n\n"
+
+                        + "Severity: "
+                        + alert.getSeverity()
+                        + "\n\n"
+
+                        + "Username: "
+                        + alert.getUsername()
+                        + "\n\n"
+
+                        + "IP Address: "
+                        + alert.getIpAddress()
+                        + "\n\n"
+
+                        + "Message:\n"
+                        + alert.getMessage();
+
+        dialog.setContentText(
+                content
+        );
+
+        dialog.getDialogPane()
+                .setPrefWidth(
+                        700
+                );
+
+        dialog.setResizable(
+                true
+        );
+
+        dialog.showAndWait();
+    }
+
+    // =========================
+    // SUMMARY CARD
     // =========================
 
     private VBox createCard(

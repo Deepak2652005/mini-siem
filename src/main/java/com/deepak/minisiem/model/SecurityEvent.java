@@ -9,12 +9,18 @@ public class SecurityEvent {
     private final String username;
     private final String ipAddress;
 
-    // Unique ID from the original event source.
-    // Windows events will use EventRecordID.
-    // Demo log events can leave this null.
     private final String sourceEventId;
 
-    // Used by your existing demo log code
+    // Process path / general event details
+    private final String details;
+
+    // Process command line
+    private final String commandLine;
+
+    // =========================
+    // DEMO LOG CONSTRUCTOR
+    // =========================
+
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
@@ -26,11 +32,17 @@ public class SecurityEvent {
                 eventType,
                 username,
                 ipAddress,
+                null,
+                null,
                 null
         );
     }
 
-    // Used by Windows Event Log
+    // =========================
+    // WINDOWS EVENT
+    // NO DETAILS
+    // =========================
+
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
@@ -38,11 +50,61 @@ public class SecurityEvent {
             String ipAddress,
             String sourceEventId) {
 
+        this(
+                timestamp,
+                eventType,
+                username,
+                ipAddress,
+                sourceEventId,
+                null,
+                null
+        );
+    }
+
+    // =========================
+    // WINDOWS EVENT
+    // WITH DETAILS
+    // =========================
+
+    public SecurityEvent(
+            LocalDateTime timestamp,
+            String eventType,
+            String username,
+            String ipAddress,
+            String sourceEventId,
+            String details) {
+
+        this(
+                timestamp,
+                eventType,
+                username,
+                ipAddress,
+                sourceEventId,
+                details,
+                null
+        );
+    }
+
+    // =========================
+    // FULL CONSTRUCTOR
+    // =========================
+
+    public SecurityEvent(
+            LocalDateTime timestamp,
+            String eventType,
+            String username,
+            String ipAddress,
+            String sourceEventId,
+            String details,
+            String commandLine) {
+
         this.timestamp = timestamp;
         this.eventType = eventType;
         this.username = username;
         this.ipAddress = ipAddress;
         this.sourceEventId = sourceEventId;
+        this.details = details;
+        this.commandLine = commandLine;
     }
 
     public LocalDateTime getTimestamp() {
@@ -63,5 +125,13 @@ public class SecurityEvent {
 
     public String getSourceEventId() {
         return sourceEventId;
+    }
+
+    public String getDetails() {
+        return details;
+    }
+
+    public String getCommandLine() {
+        return commandLine;
     }
 }

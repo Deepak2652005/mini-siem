@@ -1,75 +1,10 @@
 .root {
-    -fx-background-color: #0f172a;
     -fx-font-family: "Segoe UI";
 }
 
-.label {
-    -fx-text-fill: #e2e8f0;
-}
-
-.button {
-    -fx-background-color: #2563eb;
-    -fx-text-fill: white;
-    -fx-font-weight: bold;
-    -fx-background-radius: 8px;
-    -fx-cursor: hand;
-}
-
-.button:hover {
-    -fx-background-color: #1d4ed8;
-}
-
-.text-field,
-.combo-box {
-    -fx-background-color: #1e293b;
-    -fx-text-fill: #e2e8f0;
-    -fx-prompt-text-fill: #94a3b8;
-    -fx-border-color: #334155;
-    -fx-border-radius: 6px;
-    -fx-background-radius: 6px;
-}
-
-.combo-box .list-cell {
-    -fx-text-fill: #e2e8f0;
-    -fx-background-color: #1e293b;
-}
-
-.table-view {
-    -fx-background-color: #111827;
-    -fx-border-color: #334155;
-    -fx-border-radius: 8px;
-}
-
-.table-view .column-header-background {
-    -fx-background-color: #1e293b;
-}
-
-.table-view .column-header {
-    -fx-background-color: transparent;
-}
-
-.table-view .column-header .label {
-    -fx-text-fill: #f8fafc;
-    -fx-font-weight: bold;
-}
-
-.table-row-cell {
-    -fx-background-color: #111827;
-    -fx-text-background-color: #e2e8f0;
-}
-
-.table-row-cell:odd {
-    -fx-background-color: #172033;
-}
-
-.table-row-cell:selected {
-    -fx-background-color: #2563eb;
-}
-
-.table-cell {
-    -fx-text-fill: #e2e8f0;
-    -fx-border-color: transparent;
-}
+/* =========================
+   MAIN BACKGROUND
+   ========================= */
 
 .scroll-pane {
     -fx-background: #0f172a;
@@ -80,40 +15,20 @@
     -fx-background-color: #0f172a;
 }
 
+.label {
+    -fx-text-fill: #e2e8f0;
+}
+
+/* =========================
+   DASHBOARD HEADER
+   ========================= */
+
 .dashboard-title {
     -fx-font-size: 30px;
     -fx-font-weight: bold;
     -fx-text-fill: #f8fafc;
 }
 
-.section-title {
-    -fx-font-size: 20px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #f8fafc;
-}
-
-.dashboard-card {
-    -fx-background-color: #1e293b;
-    -fx-border-color: #334155;
-    -fx-border-radius: 10px;
-    -fx-background-radius: 10px;
-    -fx-padding: 20px;
-}
-
-.card-title {
-    -fx-font-size: 16px;
-    -fx-text-fill: #94a3b8;
-}
-
-.card-value {
-    -fx-font-size: 34px;
-    -fx-font-weight: bold;
-    -fx-text-fill: #f8fafc;
-}
-
-.high-severity-value {
-    -fx-text-fill: #ef4444;
-}
 .clock-time {
     -fx-font-size: 20px;
     -fx-font-weight: bold;
@@ -123,4 +38,282 @@
 .clock-date {
     -fx-font-size: 13px;
     -fx-text-fill: #94a3b8;
+}
+
+/* =========================
+   SECTION TITLES
+   ========================= */
+
+.section-title {
+    -fx-font-size: 21px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f8fafc;
+}
+
+/* =========================
+   CARDS
+   ========================= */
+
+.dashboard-card {
+    -fx-background-color: #1e293b;
+
+    -fx-background-radius: 10px;
+
+    -fx-border-radius: 10px;
+
+    -fx-border-color: #334155;
+
+    -fx-border-width: 1px;
+
+    -fx-padding: 20px;
+}
+
+.card-title {
+    -fx-font-size: 16px;
+    -fx-text-fill: #94a3b8;
+}
+
+.card-value {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #f8fafc;
+}
+
+.high-severity-value {
+    -fx-text-fill: #ef4444;
+}
+
+/* =========================
+   BUTTONS
+   ========================= */
+
+.button {
+    -fx-background-color: #2563eb;
+
+    -fx-text-fill: white;
+
+    -fx-font-weight: bold;
+
+    -fx-background-radius: 7px;
+
+    -fx-cursor: hand;
+}
+
+.button:hover {
+    -fx-background-color: #3b82f6;
+}
+
+.button:pressed {
+    -fx-background-color: #1d4ed8;
+}
+
+/* =========================
+   TEXT FIELDS
+   ========================= */
+
+.text-field {
+    -fx-background-color: #1e293b;
+
+    -fx-text-fill: #e2e8f0;
+
+    -fx-prompt-text-fill: #94a3b8;
+
+    -fx-border-color: #334155;
+
+    -fx-border-radius: 6px;
+
+    -fx-background-radius: 6px;
+
+    -fx-padding: 9px;
+}
+
+.text-field:focused {
+    -fx-border-color: #38bdf8;
+}
+
+/* =========================
+   COMBO BOX
+   ========================= */
+
+.combo-box {
+    -fx-background-color: #1e293b;
+
+    -fx-border-color: #334155;
+
+    -fx-border-radius: 6px;
+
+    -fx-background-radius: 6px;
+}
+
+.combo-box .list-cell {
+    -fx-text-fill: #e2e8f0;
+
+    -fx-background-color: #1e293b;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: #1e293b;
+
+    -fx-border-color: #334155;
+}
+
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: #334155;
+}
+
+/* =========================
+   TABLE
+   ========================= */
+
+.table-view {
+    -fx-background-color: #0f172a;
+
+    -fx-border-color: #334155;
+
+    -fx-border-radius: 8px;
+
+    -fx-background-radius: 8px;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #1e293b;
+}
+
+.table-view .column-header {
+    -fx-background-color: #1e293b;
+
+    -fx-border-color: transparent;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: #f8fafc;
+
+    -fx-font-weight: bold;
+}
+
+.table-view .table-cell {
+    -fx-text-fill: #e2e8f0;
+
+    -fx-border-color: transparent;
+
+    -fx-padding: 6px;
+}
+
+.table-row-cell {
+    -fx-background-color: #0f172a;
+
+    -fx-table-cell-border-color: transparent;
+}
+
+.table-row-cell:odd {
+    -fx-background-color: #172033;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: #1d4ed8;
+}
+
+.table-row-cell:hover {
+    -fx-background-color: #1e293b;
+}
+
+/* =========================
+   TABLE SCROLL BAR
+   ========================= */
+
+.scroll-bar {
+    -fx-background-color: #0f172a;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #475569;
+
+    -fx-background-radius: 6px;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: #64748b;
+}
+
+/* =========================
+   PIE CHART
+   ========================= */
+
+.chart {
+    -fx-background-color: transparent;
+}
+
+.chart-title {
+    -fx-text-fill: #f8fafc;
+
+    -fx-font-size: 18px;
+
+    -fx-font-weight: bold;
+}
+
+/*
+ * This fixes the dark text that was difficult
+ * to read beside the pie slices.
+ */
+.chart-pie-label {
+    -fx-fill: #e2e8f0;
+
+    -fx-font-size: 12px;
+}
+
+/*
+ * Lines connecting pie slices to their labels.
+ */
+.chart-pie-label-line {
+    -fx-stroke: #94a3b8;
+
+    -fx-fill: #94a3b8;
+}
+
+/* =========================
+   CHART LEGEND
+   ========================= */
+
+.chart-legend {
+    -fx-background-color: #111c31;
+
+    -fx-background-radius: 6px;
+
+    -fx-padding: 8px;
+}
+
+.chart-legend-item {
+    -fx-text-fill: #e2e8f0;
+}
+
+.chart-legend-item-symbol {
+    -fx-background-radius: 100%;
+}
+
+/* =========================
+   PIE COLORS
+   ========================= */
+
+.default-color0.chart-pie {
+    -fx-pie-color: #f97316;
+}
+
+.default-color1.chart-pie {
+    -fx-pie-color: #f59e0b;
+}
+
+.default-color2.chart-pie {
+    -fx-pie-color: #22c55e;
+}
+
+.default-color3.chart-pie {
+    -fx-pie-color: #38bdf8;
+}
+
+.default-color4.chart-pie {
+    -fx-pie-color: #8b5cf6;
+}
+
+.default-color5.chart-pie {
+    -fx-pie-color: #ec4899;
 }
