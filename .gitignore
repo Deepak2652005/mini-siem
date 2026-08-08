@@ -1,39 +1,29 @@
+# Maven build files
 target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-.kotlin
 
-### IntelliJ IDEA ###
-.idea/modules.xml
-.idea/jarRepositories.xml
-.idea/compiler.xml
-.idea/libraries/
-*.iws
+# IntelliJ IDEA
+.idea/
 *.iml
-*.ipr
 
-### Eclipse ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
+# SQLite runtime database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+# Generated/exported files
+*.csv
 
-### VS Code ###
-.vscode/
+# Java
+*.class
 
-### Mac OS ###
+# OS files
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Keep demo authentication log
+!logs/
+!logs/authentication.log

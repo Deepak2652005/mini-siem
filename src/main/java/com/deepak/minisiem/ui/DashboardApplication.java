@@ -20,14 +20,28 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.chart.PieChart;
-import javafx.scene.control.*;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -238,10 +252,50 @@ public class DashboardApplication extends Application {
                 38
         );
 
+        // =========================
+        // EXPORT BUTTONS
+        // =========================
+
+        Button exportAlertsButton =
+                new Button(
+                        "Export Alerts"
+                );
+
+        exportAlertsButton.setPrefSize(
+                130,
+                38
+        );
+
+        Button exportEventsButton =
+                new Button(
+                        "Export Events"
+                );
+
+        exportEventsButton.setPrefSize(
+                130,
+                38
+        );
+
+        exportAlertsButton.setOnAction(event ->
+                exportAlertsToCsv(stage)
+        );
+
+        exportEventsButton.setOnAction(event ->
+                exportEventsToCsv(stage)
+        );
+
+        // =========================
+        // MONITORING STATUS
+        // =========================
+
         monitoringStatusLabel =
                 new Label();
 
         setStatusDemo();
+
+        // =========================
+        // REFRESH ACTION
+        // =========================
 
         refreshButton.setOnAction(event -> {
 
@@ -260,6 +314,10 @@ public class DashboardApplication extends Application {
                 refreshData();
             }
         });
+
+        // =========================
+        // SOURCE CHANGE
+        // =========================
 
         dataSourceSelector.setOnAction(event -> {
 
@@ -285,6 +343,8 @@ public class DashboardApplication extends Application {
                         sourceLabel,
                         dataSourceSelector,
                         refreshButton,
+                        exportAlertsButton,
+                        exportEventsButton,
                         monitoringStatusLabel
                 );
 
@@ -360,6 +420,10 @@ public class DashboardApplication extends Application {
         typeFilter.setPrefWidth(
                 220
         );
+
+        // =========================
+        // ALERT FILTER LOGIC
+        // =========================
 
         Runnable updateAlertFilter = () -> {
 
@@ -471,7 +535,7 @@ public class DashboardApplication extends Application {
                 );
 
         // =========================
-        // DOUBLE CLICK ALERT
+        // DOUBLE CLICK ALERT DETAILS
         // =========================
 
         alertTable.setOnMouseClicked(event -> {
@@ -639,8 +703,8 @@ public class DashboardApplication extends Application {
         Scene scene =
                 new Scene(
                         scrollPane,
-                        1300,
-                        820
+                        1400,
+                        850
                 );
 
         scene
@@ -774,9 +838,7 @@ public class DashboardApplication extends Application {
 
         if (windowsEvents.isEmpty()) {
 
-            System.out.println(
-                    "No new Windows events."
-            );
+
 
             return;
         }
@@ -812,8 +874,7 @@ public class DashboardApplication extends Application {
                                 .getAllEvents()
                 );
 
-        for (SecurityAlert alert
-                : alerts) {
+        for (SecurityAlert alert : alerts) {
 
             if (alert != null) {
 
@@ -825,7 +886,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // WINDOWS LIVE
+    // LIVE MONITORING
     // =========================
 
     private void startWindowsAutoRefresh() {
@@ -1074,8 +1135,7 @@ public class DashboardApplication extends Application {
         Map<String, Long> counts =
                 new TreeMap<>();
 
-        for (SecurityEvent event
-                : eventData) {
+        for (SecurityEvent event : eventData) {
 
             if (event.getEventType() == null) {
                 continue;
@@ -1146,8 +1206,7 @@ public class DashboardApplication extends Application {
         Map<String, Long> counts =
                 new TreeMap<>();
 
-        for (SecurityAlert alert
-                : alertData) {
+        for (SecurityAlert alert : alertData) {
 
             if (alert.getAlertType() == null) {
                 continue;
@@ -1182,6 +1241,269 @@ public class DashboardApplication extends Application {
         alertTypeChart.setData(
                 data
         );
+    }
+
+    // =========================
+    // EXPORT ALERTS
+    // =========================
+
+    private void exportAlertsToCsv(
+            Stage stage) {
+
+        FileChooser fileChooser =
+                new FileChooser();
+
+        fileChooser.setTitle(
+                "Export Security Alerts"
+        );
+
+        fileChooser.setInitialFileName(
+                "mini-siem-alerts.csv"
+        );
+
+        fileChooser
+                .getExtensionFilters()
+                .add(
+                        new FileChooser.ExtensionFilter(
+                                "CSV Files",
+                                "*.csv"
+                        )
+                );
+
+        File file =
+                fileChooser.showSaveDialog(
+                        stage
+                );
+
+        if (file == null) {
+            return;
+        }
+
+        try (BufferedWriter writer =
+                     new BufferedWriter(
+                             new FileWriter(
+                                     file
+                             )
+                     )) {
+
+            writer.write(
+                    "Type,Severity,Username,IP Address,Message"
+            );
+
+            writer.newLine();
+
+            for (SecurityAlert alert : alertData) {
+
+                writer.write(
+                        escapeCsv(
+                                alert.getAlertType()
+                        )
+                                + ","
+                                + escapeCsv(
+                                alert.getSeverity()
+                        )
+                                + ","
+                                + escapeCsv(
+                                alert.getUsername()
+                        )
+                                + ","
+                                + escapeCsv(
+                                alert.getIpAddress()
+                        )
+                                + ","
+                                + escapeCsv(
+                                alert.getMessage()
+                        )
+                );
+
+                writer.newLine();
+            }
+
+            showExportSuccess(
+                    "Alerts exported successfully.",
+                    file
+            );
+
+        } catch (IOException exception) {
+
+            showExportError(
+                    exception
+            );
+        }
+    }
+
+    // =========================
+    // EXPORT EVENTS
+    // =========================
+
+    private void exportEventsToCsv(
+            Stage stage) {
+
+        FileChooser fileChooser =
+                new FileChooser();
+
+        fileChooser.setTitle(
+                "Export Security Events"
+        );
+
+        fileChooser.setInitialFileName(
+                "mini-siem-events.csv"
+        );
+
+        fileChooser
+                .getExtensionFilters()
+                .add(
+                        new FileChooser.ExtensionFilter(
+                                "CSV Files",
+                                "*.csv"
+                        )
+                );
+
+        File file =
+                fileChooser.showSaveDialog(
+                        stage
+                );
+
+        if (file == null) {
+            return;
+        }
+
+        try (BufferedWriter writer =
+                     new BufferedWriter(
+                             new FileWriter(
+                                     file
+                             )
+                     )) {
+
+            writer.write(
+                    "Timestamp,Event Type,Username,IP Address,Process,Command Line"
+            );
+
+            writer.newLine();
+
+            for (SecurityEvent event : eventData) {
+
+                writer.write(
+                        escapeCsv(
+                                event.getTimestamp() != null
+                                        ? event.getTimestamp()
+                                        .toString()
+                                        : ""
+                        )
+                                + ","
+                                + escapeCsv(
+                                event.getEventType()
+                        )
+                                + ","
+                                + escapeCsv(
+                                event.getUsername()
+                        )
+                                + ","
+                                + escapeCsv(
+                                event.getIpAddress()
+                        )
+                                + ","
+                                + escapeCsv(
+                                event.getDetails()
+                        )
+                                + ","
+                                + escapeCsv(
+                                event.getCommandLine()
+                        )
+                );
+
+                writer.newLine();
+            }
+
+            showExportSuccess(
+                    "Events exported successfully.",
+                    file
+            );
+
+        } catch (IOException exception) {
+
+            showExportError(
+                    exception
+            );
+        }
+    }
+
+    // =========================
+    // CSV ESCAPE
+    // =========================
+
+    private String escapeCsv(
+            String value) {
+
+        if (value == null) {
+            return "";
+        }
+
+        String escaped =
+                value.replace(
+                        "\"",
+                        "\"\""
+                );
+
+        return "\""
+                + escaped
+                + "\"";
+    }
+
+    // =========================
+    // EXPORT SUCCESS
+    // =========================
+
+    private void showExportSuccess(
+            String message,
+            File file) {
+
+        Alert alert =
+                new Alert(
+                        Alert.AlertType.INFORMATION
+                );
+
+        alert.setTitle(
+                "Export Complete"
+        );
+
+        alert.setHeaderText(
+                message
+        );
+
+        alert.setContentText(
+                "Saved to:\n"
+                        + file.getAbsolutePath()
+        );
+
+        alert.showAndWait();
+    }
+
+    // =========================
+    // EXPORT ERROR
+    // =========================
+
+    private void showExportError(
+            Exception exception) {
+
+        Alert alert =
+                new Alert(
+                        Alert.AlertType.ERROR
+                );
+
+        alert.setTitle(
+                "Export Failed"
+        );
+
+        alert.setHeaderText(
+                "Could not export CSV file."
+        );
+
+        alert.setContentText(
+                exception.getMessage()
+        );
+
+        alert.showAndWait();
     }
 
     // =========================
@@ -1272,7 +1594,9 @@ public class DashboardApplication extends Application {
                                     return;
                                 }
 
-                                setText(value);
+                                setText(
+                                        value
+                                );
 
                                 switch (
                                         value.toUpperCase()

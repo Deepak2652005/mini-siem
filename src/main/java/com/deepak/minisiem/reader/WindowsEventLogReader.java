@@ -22,6 +22,10 @@ public class WindowsEventLogReader {
     private static final int MAX_EVENTS =
             2000;
 
+    // =========================
+    // READ NEW WINDOWS EVENTS
+    // =========================
+
     public List<SecurityEvent> readSecurityEventsAfter(
             long lastRecordId) {
 
@@ -33,6 +37,10 @@ public class WindowsEventLogReader {
                         + lastRecordId
         );
 
+        // =========================
+        // RECORD ID FILTER
+        // =========================
+
         String recordFilter;
 
         if (lastRecordId <= 0) {
@@ -41,47 +49,93 @@ public class WindowsEventLogReader {
 
         } else {
 
-            recordFilter =
-                    """
+            recordFilter = """
                     Where-Object {
                         $_.RecordId -gt %d
                     } |
                     """.formatted(
-                            lastRecordId
-                    );
+                    lastRecordId
+            );
         }
 
+        // =========================
+        // POWERSHELL COMMAND
+        // =========================
+
         String command = """
-                Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624,4625,4672,4688} -MaxEvents %d |
+                $events = Get-WinEvent `
+                    -FilterHashtable @{
+                        LogName='Security';
+                        Id=4624,4625,4672,4688
+                    } `
+                    -MaxEvents %d `
+                    -ErrorAction SilentlyContinue
+
+                if ($null -eq $events) {
+                    exit 0
+                }
+
+                $events |
                 %s
                 Sort-Object RecordId |
                 ForEach-Object {
 
                     $xml = [xml]$_.ToXml()
+
                     $data = @{}
 
                     foreach ($item in $xml.Event.EventData.Data) {
-                        $data[$item.Name] = $item.'#text'
+
+                        $data[$item.Name] =
+                            $item.'#text'
                     }
 
-                    $time = $_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')
-                    $id = $_.Id
-                    $recordId = $_.RecordId
+                    $time =
+                        $_.TimeCreated.ToString(
+                            'yyyy-MM-dd HH:mm:ss'
+                        )
 
-                    $user = $data['TargetUserName']
+                    $id =
+                        $_.Id
+
+                    $recordId =
+                        $_.RecordId
+
+                    // =========================
+                    // USERNAME
+                    // =========================
+
+                    $user =
+                        $data['TargetUserName']
 
                     if ([string]::IsNullOrWhiteSpace($user)) {
-                        $user = $data['SubjectUserName']
+
+                        $user =
+                            $data['SubjectUserName']
                     }
 
                     if ([string]::IsNullOrWhiteSpace($user)) {
-                        $user = $data['AccountName']
+
+                        $user =
+                            $data['AccountName']
                     }
 
-                    $ip = $data['IpAddress']
+                    // =========================
+                    // IP ADDRESS
+                    // =========================
 
-                    $details = ''
-                    $commandLine = ''
+                    $ip =
+                        $data['IpAddress']
+
+                    // =========================
+                    // PROCESS INFORMATION
+                    // =========================
+
+                    $details =
+                        ''
+
+                    $commandLine =
+                        ''
 
                     if ($id -eq 4688) {
 
@@ -91,6 +145,10 @@ public class WindowsEventLogReader {
                         $commandLine =
                             $data['CommandLine']
                     }
+
+                    // =========================
+                    // CREATE OUTPUT LINE
+                    // =========================
 
                     $values = @(
                         $time,
@@ -102,10 +160,11 @@ public class WindowsEventLogReader {
                         $commandLine
                     )
 
-                    $output = [string]::Join(
-                        [char]124,
-                        $values
-                    )
+                    $output =
+                        [string]::Join(
+                            [char]124,
+                            $values
+                        )
 
                     Write-Output $output
                 }
@@ -113,6 +172,10 @@ public class WindowsEventLogReader {
                 MAX_EVENTS,
                 recordFilter
         );
+
+        // =========================
+        // START POWERSHELL
+        // =========================
 
         ProcessBuilder processBuilder =
                 new ProcessBuilder(
@@ -130,7 +193,7 @@ public class WindowsEventLogReader {
                     processBuilder.start();
 
             // =========================
-            // NORMAL OUTPUT
+            // READ NORMAL OUTPUT
             // =========================
 
             try (BufferedReader reader =
@@ -145,6 +208,10 @@ public class WindowsEventLogReader {
                 while ((line =
                         reader.readLine()) != null) {
 
+                    if (line.isBlank()) {
+                        continue;
+                    }
+
                     SecurityEvent event =
                             parseWindowsEvent(
                                     line
@@ -152,13 +219,15 @@ public class WindowsEventLogReader {
 
                     if (event != null) {
 
-                        events.add(event);
+                        events.add(
+                                event
+                        );
                     }
                 }
             }
 
             // =========================
-            // ERROR OUTPUT
+            // READ ERROR OUTPUT
             // =========================
 
             StringBuilder errors =
@@ -176,26 +245,25 @@ public class WindowsEventLogReader {
                 while ((line =
                         errorReader.readLine()) != null) {
 
-                    errors.append(line)
+                    errors.append(
+                                    line
+                            )
                             .append(
                                     System.lineSeparator()
                             );
                 }
             }
 
+            // =========================
+            // WAIT FOR POWERSHELL
+            // =========================
+
             int exitCode =
                     process.waitFor();
 
-            if (!errors.isEmpty()) {
-
-                System.out.println(
-                        "===== POWERSHELL ERROR ====="
-                );
-
-                System.out.println(
-                        errors
-                );
-            }
+            // =========================
+            // HANDLE RESULT
+            // =========================
 
             if (exitCode == 0) {
 
@@ -213,6 +281,17 @@ public class WindowsEventLogReader {
                         "PowerShell exit code: "
                                 + exitCode
                 );
+
+                if (!errors.isEmpty()) {
+
+                    System.out.println(
+                            "===== POWERSHELL ERROR ====="
+                    );
+
+                    System.out.println(
+                            errors
+                    );
+                }
             }
 
         } catch (Exception exception) {
@@ -224,14 +303,31 @@ public class WindowsEventLogReader {
             exception.printStackTrace();
         }
 
+        // =========================
+        // SORT BY RECORD ID
+        // =========================
+
         events.sort(
                 Comparator.comparingLong(
-                        event ->
-                                Long.parseLong(
+                        event -> {
+
+                            try {
+
+                                return Long.parseLong(
                                         event.getSourceEventId()
-                                )
+                                );
+
+                            } catch (Exception exception) {
+
+                                return 0;
+                            }
+                        }
                 )
         );
+
+        // =========================
+        // RESULT INFORMATION
+        // =========================
 
         System.out.println(
                 "New Windows events found: "
@@ -249,13 +345,19 @@ public class WindowsEventLogReader {
                     "Newest RecordId: "
                             + latest.getSourceEventId()
             );
+
+        } else {
+
+            System.out.println(
+                    "No new Windows events."
+            );
         }
 
         return events;
     }
 
     // =========================
-    // PARSE EVENT
+    // PARSE WINDOWS EVENT
     // =========================
 
     private SecurityEvent parseWindowsEvent(
@@ -322,12 +424,13 @@ public class WindowsEventLogReader {
                                 "PROCESS_CREATED";
 
                 default -> {
+
                     return null;
                 }
             }
 
             // =========================
-            // USERNAME
+            // USERNAME CLEANUP
             // =========================
 
             if (username.isBlank()
@@ -338,7 +441,7 @@ public class WindowsEventLogReader {
             }
 
             // =========================
-            // IP
+            // IP CLEANUP
             // =========================
 
             if (ipAddress.isBlank()
@@ -352,13 +455,14 @@ public class WindowsEventLogReader {
             }
 
             // =========================
-            // DETAILS
+            // PROCESS DETAILS
             // =========================
 
             if (details.isBlank()
                     || "-".equals(details)) {
 
-                details = null;
+                details =
+                        null;
             }
 
             if (eventId == 4688
@@ -375,13 +479,22 @@ public class WindowsEventLogReader {
             if (commandLine.isBlank()
                     || "-".equals(commandLine)) {
 
-                commandLine = null;
+                commandLine =
+                        null;
             }
+
+            // =========================
+            // RECORD ID
+            // =========================
 
             if (recordId.isBlank()) {
 
                 return null;
             }
+
+            // =========================
+            // TIMESTAMP
+            // =========================
 
             LocalDateTime timestamp =
                     LocalDateTime.parse(
@@ -405,7 +518,9 @@ public class WindowsEventLogReader {
                     "Could not parse Windows event:"
             );
 
-            System.out.println(line);
+            System.out.println(
+                    line
+            );
 
             System.out.println(
                     "Reason: "
