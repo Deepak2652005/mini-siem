@@ -2,22 +2,23 @@ package com.deepak.minisiem.ui;
 
 import com.deepak.minisiem.alert.SecurityAlert;
 import com.deepak.minisiem.database.DatabaseManager;
+import com.deepak.minisiem.model.SecurityEvent;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public class DashboardApplication extends Application {
@@ -27,28 +28,29 @@ public class DashboardApplication extends Application {
 
         DatabaseManager databaseManager = new DatabaseManager();
 
-        // Get data from SQLite
-        int totalEvents =
-                databaseManager.getEventCount();
+        // =========================
+        // Load data from SQLite
+        // =========================
 
-        int totalAlerts =
-                databaseManager.getAlertCount();
+        int totalEvents = databaseManager.getEventCount();
+        int totalAlerts = databaseManager.getAlertCount();
 
         List<SecurityAlert> alerts =
                 databaseManager.getAllAlerts();
 
+        List<SecurityEvent> events =
+                databaseManager.getAllEvents();
+
         long highSeverityAlerts = alerts.stream()
                 .filter(alert ->
-                        alert.getSeverity()
-                                .equalsIgnoreCase("HIGH"))
+                        alert.getSeverity().equalsIgnoreCase("HIGH"))
                 .count();
 
         // =========================
         // Dashboard title
         // =========================
 
-        Label title =
-                new Label("MINI SIEM DASHBOARD");
+        Label title = new Label("MINI SIEM DASHBOARD");
 
         title.setStyle(
                 "-fx-font-size: 28px;" +
@@ -84,25 +86,82 @@ public class DashboardApplication extends Application {
         cards.setAlignment(Pos.CENTER);
 
         // =========================
-        // Alerts section title
+        // Security Alerts
         // =========================
 
-        Label alertsTitle =
-                new Label("SECURITY ALERTS");
+        Label alertsTitle = new Label("SECURITY ALERTS");
 
         alertsTitle.setStyle(
                 "-fx-font-size: 20px;" +
                         "-fx-font-weight: bold;"
         );
 
+        TableView<SecurityAlert> alertTable =
+                createAlertTable(alerts);
+
         // =========================
-        // Alerts table
+        // Security Events
         // =========================
 
-        TableView<SecurityAlert> alertTable =
+        Label eventsTitle = new Label("SECURITY EVENTS");
+
+        eventsTitle.setStyle(
+                "-fx-font-size: 20px;" +
+                        "-fx-font-weight: bold;"
+        );
+
+        TableView<SecurityEvent> eventTable =
+                createEventTable(events);
+
+        // =========================
+        // Dashboard content
+        // =========================
+
+        VBox content = new VBox(
+                30,
+                title,
+                cards,
+                alertsTitle,
+                alertTable,
+                eventsTitle,
+                eventTable
+        );
+
+        content.setAlignment(Pos.TOP_CENTER);
+        content.setPadding(new Insets(40));
+
+        // Allows dashboard to scroll
+        ScrollPane scrollPane = new ScrollPane(content);
+
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPannable(true);
+
+        // =========================
+        // Scene
+        // =========================
+
+        Scene scene = new Scene(
+                scrollPane,
+                1100,
+                750
+        );
+
+        stage.setTitle("Mini SIEM Dashboard");
+        stage.setScene(scene);
+
+        stage.show();
+    }
+
+    // =========================
+    // Alert table
+    // =========================
+
+    private TableView<SecurityAlert> createAlertTable(
+            List<SecurityAlert> alerts) {
+
+        TableView<SecurityAlert> table =
                 new TableView<>();
 
-        // Alert Type column
         TableColumn<SecurityAlert, String> typeColumn =
                 new TableColumn<>("Type");
 
@@ -110,7 +169,6 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>("alertType")
         );
 
-        // Severity column
         TableColumn<SecurityAlert, String> severityColumn =
                 new TableColumn<>("Severity");
 
@@ -118,7 +176,6 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>("severity")
         );
 
-        // Username column
         TableColumn<SecurityAlert, String> usernameColumn =
                 new TableColumn<>("Username");
 
@@ -126,7 +183,6 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>("username")
         );
 
-        // IP Address column
         TableColumn<SecurityAlert, String> ipColumn =
                 new TableColumn<>("IP Address");
 
@@ -134,7 +190,6 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>("ipAddress")
         );
 
-        // Message column
         TableColumn<SecurityAlert, String> messageColumn =
                 new TableColumn<>("Message");
 
@@ -142,8 +197,7 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>("message")
         );
 
-        // Add columns to table
-        alertTable.getColumns().addAll(
+        table.getColumns().addAll(
                 typeColumn,
                 severityColumn,
                 usernameColumn,
@@ -151,52 +205,75 @@ public class DashboardApplication extends Application {
                 messageColumn
         );
 
-        // Convert database List into JavaFX ObservableList
-        ObservableList<SecurityAlert> alertData =
-                FXCollections.observableArrayList(alerts);
+        table.setItems(
+                FXCollections.observableArrayList(alerts)
+        );
 
-        alertTable.setItems(alertData);
-
-        // Resize columns automatically
-        alertTable.setColumnResizePolicy(
+        table.setColumnResizePolicy(
                 TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN
         );
 
-        alertTable.setPrefHeight(300);
+        table.setPrefHeight(220);
 
-        // =========================
-        // Main layout
-        // =========================
+        return table;
+    }
 
-        VBox root = new VBox(
-                30,
-                title,
-                cards,
-                alertsTitle,
-                alertTable
+    // =========================
+    // Event table
+    // =========================
+
+    private TableView<SecurityEvent> createEventTable(
+            List<SecurityEvent> events) {
+
+        TableView<SecurityEvent> table =
+                new TableView<>();
+
+        TableColumn<SecurityEvent, LocalDateTime> timestampColumn =
+                new TableColumn<>("Timestamp");
+
+        timestampColumn.setCellValueFactory(
+                new PropertyValueFactory<>("timestamp")
         );
 
-        root.setPadding(new Insets(40));
+        TableColumn<SecurityEvent, String> eventTypeColumn =
+                new TableColumn<>("Event Type");
 
-        root.setAlignment(Pos.TOP_CENTER);
-
-        VBox.setVgrow(
-                alertTable,
-                Priority.ALWAYS
+        eventTypeColumn.setCellValueFactory(
+                new PropertyValueFactory<>("eventType")
         );
 
-        // =========================
-        // Scene
-        // =========================
+        TableColumn<SecurityEvent, String> usernameColumn =
+                new TableColumn<>("Username");
 
-        Scene scene =
-                new Scene(root, 1100, 700);
+        usernameColumn.setCellValueFactory(
+                new PropertyValueFactory<>("username")
+        );
 
-        stage.setTitle("Mini SIEM Dashboard");
+        TableColumn<SecurityEvent, String> ipColumn =
+                new TableColumn<>("IP Address");
 
-        stage.setScene(scene);
+        ipColumn.setCellValueFactory(
+                new PropertyValueFactory<>("ipAddress")
+        );
 
-        stage.show();
+        table.getColumns().addAll(
+                timestampColumn,
+                eventTypeColumn,
+                usernameColumn,
+                ipColumn
+        );
+
+        table.setItems(
+                FXCollections.observableArrayList(events)
+        );
+
+        table.setColumnResizePolicy(
+                TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN
+        );
+
+        table.setPrefHeight(320);
+
+        return table;
     }
 
     // =========================
@@ -207,11 +284,8 @@ public class DashboardApplication extends Application {
             String titleText,
             String valueText) {
 
-        Label title =
-                new Label(titleText);
-
-        Label value =
-                new Label(valueText);
+        Label title = new Label(titleText);
+        Label value = new Label(valueText);
 
         title.setStyle(
                 "-fx-font-size: 16px;"
@@ -222,12 +296,11 @@ public class DashboardApplication extends Application {
                         "-fx-font-weight: bold;"
         );
 
-        VBox card =
-                new VBox(
-                        10,
-                        title,
-                        value
-                );
+        VBox card = new VBox(
+                10,
+                title,
+                value
+        );
 
         card.setAlignment(Pos.CENTER);
 
