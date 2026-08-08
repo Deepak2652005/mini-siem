@@ -37,9 +37,15 @@ import javafx.util.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 public class DashboardApplication extends Application {
+
+    // =========================
+    // BACKEND COMPONENTS
+    // =========================
 
     private final DatabaseManager databaseManager =
             new DatabaseManager();
@@ -53,11 +59,19 @@ public class DashboardApplication extends Application {
     private final DetectionEngine detectionEngine =
             new DetectionEngine();
 
+    // =========================
+    // DASHBOARD DATA
+    // =========================
+
     private final ObservableList<SecurityAlert> alertData =
             FXCollections.observableArrayList();
 
     private final ObservableList<SecurityEvent> eventData =
             FXCollections.observableArrayList();
+
+    // =========================
+    // DASHBOARD COMPONENTS
+    // =========================
 
     private Label totalEventsValue;
     private Label totalAlertsValue;
@@ -67,6 +81,10 @@ public class DashboardApplication extends Application {
     private Label dateLabel;
 
     private PieChart eventTypeChart;
+    private PieChart alertTypeChart;
+
+    // Keep Timeline referenced while application is running
+    private Timeline clockTimeline;
 
     @Override
     public void start(Stage stage) {
@@ -205,7 +223,7 @@ public class DashboardApplication extends Application {
         });
 
         // =========================
-        // ALERT SECTION
+        // SECURITY ALERTS
         // =========================
 
         Label alertsTitle =
@@ -234,6 +252,10 @@ public class DashboardApplication extends Application {
                 38
         );
 
+        // =========================
+        // SEVERITY FILTER
+        // =========================
+
         ComboBox<String> severityFilter =
                 new ComboBox<>();
 
@@ -252,6 +274,10 @@ public class DashboardApplication extends Application {
                 140
         );
 
+        // =========================
+        // ALERT TYPE FILTER
+        // =========================
+
         ComboBox<String> typeFilter =
                 new ComboBox<>();
 
@@ -268,6 +294,10 @@ public class DashboardApplication extends Application {
         typeFilter.setPrefWidth(
                 180
         );
+
+        // =========================
+        // ALERT FILTER LOGIC
+        // =========================
 
         Runnable updateAlertFilter = () -> {
 
@@ -309,22 +339,24 @@ public class DashboardApplication extends Application {
                         );
 
                 boolean severityMatch =
-                        selectedSeverity.equals(
-                                "ALL"
-                        )
-                                || alert.getSeverity()
-                                .equalsIgnoreCase(
-                                        selectedSeverity
-                                );
+                        "ALL".equals(selectedSeverity)
+                                || (
+                                alert.getSeverity() != null
+                                        && alert.getSeverity()
+                                        .equalsIgnoreCase(
+                                                selectedSeverity
+                                        )
+                        );
 
                 boolean typeMatch =
-                        selectedType.equals(
-                                "ALL"
-                        )
-                                || alert.getAlertType()
-                                .equalsIgnoreCase(
-                                        selectedType
-                                );
+                        "ALL".equals(selectedType)
+                                || (
+                                alert.getAlertType() != null
+                                        && alert.getAlertType()
+                                        .equalsIgnoreCase(
+                                                selectedType
+                                        )
+                        );
 
                 return searchMatch
                         && severityMatch
@@ -371,7 +403,7 @@ public class DashboardApplication extends Application {
                 );
 
         // =========================
-        // EVENT SECTION
+        // SECURITY EVENTS
         // =========================
 
         Label eventsTitle =
@@ -429,11 +461,14 @@ public class DashboardApplication extends Application {
                                                 securityEvent.getEventType(),
                                                 searchText
                                         )
-                                                || containsIgnoreCase(
-                                                securityEvent
-                                                        .getTimestamp()
-                                                        .toString(),
-                                                searchText
+                                                || (
+                                                securityEvent.getTimestamp() != null
+                                                        && containsIgnoreCase(
+                                                        securityEvent
+                                                                .getTimestamp()
+                                                                .toString(),
+                                                        searchText
+                                                )
                                         );
                                     }
                             );
@@ -457,6 +492,20 @@ public class DashboardApplication extends Application {
         eventTypeChart =
                 createEventTypeChart();
 
+        alertTypeChart =
+                createAlertTypeChart();
+
+        HBox charts =
+                new HBox(
+                        30,
+                        eventTypeChart,
+                        alertTypeChart
+                );
+
+        charts.setAlignment(
+                Pos.CENTER
+        );
+
         // =========================
         // MAIN LAYOUT
         // =========================
@@ -477,7 +526,7 @@ public class DashboardApplication extends Application {
                         eventTable,
 
                         analyticsTitle,
-                        eventTypeChart
+                        charts
                 );
 
         content.setPadding(
@@ -500,6 +549,10 @@ public class DashboardApplication extends Application {
         scrollPane.setPannable(
                 true
         );
+
+        // =========================
+        // SCENE
+        // =========================
 
         Scene scene =
                 new Scene(
@@ -527,6 +580,7 @@ public class DashboardApplication extends Application {
 
         stage.show();
 
+        // Load database data
         refreshData();
     }
 
@@ -538,7 +592,7 @@ public class DashboardApplication extends Application {
 
         updateClock();
 
-        Timeline timeline =
+        clockTimeline =
                 new Timeline(
                         new KeyFrame(
                                 Duration.seconds(1),
@@ -547,11 +601,11 @@ public class DashboardApplication extends Application {
                         )
                 );
 
-        timeline.setCycleCount(
+        clockTimeline.setCycleCount(
                 Animation.INDEFINITE
         );
 
-        timeline.play();
+        clockTimeline.play();
     }
 
     private void updateClock() {
@@ -583,7 +637,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // PROCESS LOGS
+    // PROCESS LOG FILE
     // =========================
 
     private void processLogs() {
@@ -596,9 +650,12 @@ public class DashboardApplication extends Application {
             SecurityEvent securityEvent =
                     logParser.parse(line);
 
-            databaseManager.saveEvent(
-                    securityEvent
-            );
+            if (securityEvent != null) {
+
+                databaseManager.saveEvent(
+                        securityEvent
+                );
+            }
         }
 
         List<SecurityEvent> events =
@@ -611,14 +668,17 @@ public class DashboardApplication extends Application {
 
         for (SecurityAlert alert : detectedAlerts) {
 
-            databaseManager.saveAlert(
-                    alert
-            );
+            if (alert != null) {
+
+                databaseManager.saveAlert(
+                        alert
+                );
+            }
         }
     }
 
     // =========================
-    // REFRESH DATA
+    // REFRESH DASHBOARD
     // =========================
 
     private void refreshData() {
@@ -648,7 +708,8 @@ public class DashboardApplication extends Application {
         long highSeverityCount =
                 alertData.stream()
                         .filter(alert ->
-                                alert.getSeverity()
+                                alert.getSeverity() != null
+                                        && alert.getSeverity()
                                         .equalsIgnoreCase(
                                                 "HIGH"
                                         )
@@ -661,66 +722,14 @@ public class DashboardApplication extends Application {
                 )
         );
 
+        // Update both analytics charts
         updateEventTypeChart();
+        updateAlertTypeChart();
     }
 
     // =========================
     // EVENT TYPE CHART
     // =========================
-
-    private void updateEventTypeChart() {
-
-        long loginSuccessCount =
-                eventData.stream()
-                        .filter(event ->
-                                event.getEventType()
-                                        .equalsIgnoreCase(
-                                                "LOGIN_SUCCESS"
-                                        )
-                        )
-                        .count();
-
-        long loginFailedCount =
-                eventData.stream()
-                        .filter(event ->
-                                event.getEventType()
-                                        .equalsIgnoreCase(
-                                                "LOGIN_FAILED"
-                                        )
-                        )
-                        .count();
-
-        ObservableList<PieChart.Data> chartData =
-                FXCollections.observableArrayList();
-
-        if (loginSuccessCount > 0) {
-
-            chartData.add(
-                    new PieChart.Data(
-                            "LOGIN_SUCCESS ("
-                                    + loginSuccessCount
-                                    + ")",
-                            loginSuccessCount
-                    )
-            );
-        }
-
-        if (loginFailedCount > 0) {
-
-            chartData.add(
-                    new PieChart.Data(
-                            "LOGIN_FAILED ("
-                                    + loginFailedCount
-                                    + ")",
-                            loginFailedCount
-                    )
-            );
-        }
-
-        eventTypeChart.setData(
-                chartData
-        );
-    }
 
     private PieChart createEventTypeChart() {
 
@@ -740,15 +749,134 @@ public class DashboardApplication extends Application {
         );
 
         chart.setPrefSize(
-                500,
+                480,
                 350
         );
 
         return chart;
     }
 
+    private void updateEventTypeChart() {
+
+        Map<String, Long> eventCounts =
+                new TreeMap<>();
+
+        for (SecurityEvent event : eventData) {
+
+            if (event.getEventType() == null) {
+                continue;
+            }
+
+            String eventType =
+                    event.getEventType();
+
+            eventCounts.put(
+                    eventType,
+                    eventCounts.getOrDefault(
+                            eventType,
+                            0L
+                    ) + 1
+            );
+        }
+
+        ObservableList<PieChart.Data> chartData =
+                FXCollections.observableArrayList();
+
+        for (Map.Entry<String, Long> entry
+                : eventCounts.entrySet()) {
+
+            chartData.add(
+                    new PieChart.Data(
+                            entry.getKey()
+                                    + " ("
+                                    + entry.getValue()
+                                    + ")",
+                            entry.getValue()
+                    )
+            );
+        }
+
+        eventTypeChart.setData(
+                chartData
+        );
+    }
+
     // =========================
-    // UTILITIES
+    // ALERT TYPE CHART
+    // =========================
+
+    private PieChart createAlertTypeChart() {
+
+        PieChart chart =
+                new PieChart();
+
+        chart.setTitle(
+                "Alert Types"
+        );
+
+        chart.setLabelsVisible(
+                true
+        );
+
+        chart.setLegendVisible(
+                true
+        );
+
+        chart.setPrefSize(
+                480,
+                350
+        );
+
+        return chart;
+    }
+
+    private void updateAlertTypeChart() {
+
+        Map<String, Long> alertCounts =
+                new TreeMap<>();
+
+        for (SecurityAlert alert : alertData) {
+
+            if (alert.getAlertType() == null) {
+                continue;
+            }
+
+            String alertType =
+                    alert.getAlertType();
+
+            alertCounts.put(
+                    alertType,
+                    alertCounts.getOrDefault(
+                            alertType,
+                            0L
+                    ) + 1
+            );
+        }
+
+        ObservableList<PieChart.Data> chartData =
+                FXCollections.observableArrayList();
+
+        for (Map.Entry<String, Long> entry
+                : alertCounts.entrySet()) {
+
+            chartData.add(
+                    new PieChart.Data(
+                            entry.getKey()
+                                    + " ("
+                                    + entry.getValue()
+                                    + ")",
+                            entry.getValue()
+                    )
+            );
+        }
+
+        alertTypeChart.setData(
+                chartData
+        );
+    }
+
+    // =========================
+    // UTILITY
     // =========================
 
     private boolean containsIgnoreCase(
@@ -810,6 +938,7 @@ public class DashboardApplication extends Application {
                 )
         );
 
+        // Severity colors
         severityColumn.setCellFactory(
                 column ->
                         new TableCell<>() {
