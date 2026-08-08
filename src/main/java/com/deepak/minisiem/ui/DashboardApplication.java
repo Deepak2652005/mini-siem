@@ -18,6 +18,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -28,6 +29,7 @@ import javafx.stage.Stage;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 public class DashboardApplication extends Application {
 
@@ -65,9 +67,8 @@ public class DashboardApplication extends Application {
         Label title =
                 new Label("MINI SIEM DASHBOARD");
 
-        title.setStyle(
-                "-fx-font-size: 28px;" +
-                        "-fx-font-weight: bold;"
+        title.getStyleClass().add(
+                "dashboard-title"
         );
 
         // =========================
@@ -82,6 +83,10 @@ public class DashboardApplication extends Application {
 
         highSeverityValue =
                 new Label("0");
+
+        highSeverityValue
+                .getStyleClass()
+                .add("high-severity-value");
 
         VBox eventCard =
                 createCard(
@@ -109,7 +114,9 @@ public class DashboardApplication extends Application {
                         highSeverityCard
                 );
 
-        cards.setAlignment(Pos.CENTER);
+        cards.setAlignment(
+                Pos.CENTER
+        );
 
         // =========================
         // Refresh button
@@ -129,7 +136,7 @@ public class DashboardApplication extends Application {
         });
 
         // =========================
-        // ALERT FILTERING
+        // ALERT SECTION
         // =========================
 
         Label alertsTitle =
@@ -143,6 +150,7 @@ public class DashboardApplication extends Application {
                         alert -> true
                 );
 
+        // Alert search
         TextField alertSearchField =
                 new TextField();
 
@@ -153,6 +161,7 @@ public class DashboardApplication extends Application {
         alertSearchField.setPrefWidth(380);
         alertSearchField.setPrefHeight(38);
 
+        // Severity filter
         ComboBox<String> severityFilter =
                 new ComboBox<>();
 
@@ -164,7 +173,9 @@ public class DashboardApplication extends Application {
         );
 
         severityFilter.setValue("ALL");
+        severityFilter.setPrefWidth(140);
 
+        // Type filter
         ComboBox<String> typeFilter =
                 new ComboBox<>();
 
@@ -175,7 +186,9 @@ public class DashboardApplication extends Application {
         );
 
         typeFilter.setValue("ALL");
+        typeFilter.setPrefWidth(180);
 
+        // Alert filter logic
         Runnable updateAlertFilter = () -> {
 
             String searchText =
@@ -235,19 +248,22 @@ public class DashboardApplication extends Application {
             });
         };
 
-        alertSearchField.textProperty()
+        alertSearchField
+                .textProperty()
                 .addListener(
                         (observable, oldValue, newValue) ->
                                 updateAlertFilter.run()
                 );
 
-        severityFilter.valueProperty()
+        severityFilter
+                .valueProperty()
                 .addListener(
                         (observable, oldValue, newValue) ->
                                 updateAlertFilter.run()
                 );
 
-        typeFilter.valueProperty()
+        typeFilter
+                .valueProperty()
                 .addListener(
                         (observable, oldValue, newValue) ->
                                 updateAlertFilter.run()
@@ -261,13 +277,17 @@ public class DashboardApplication extends Application {
                         typeFilter
                 );
 
-        alertFilters.setAlignment(Pos.CENTER);
+        alertFilters.setAlignment(
+                Pos.CENTER
+        );
 
         TableView<SecurityAlert> alertTable =
-                createAlertTable(filteredAlerts);
+                createAlertTable(
+                        filteredAlerts
+                );
 
         // =========================
-        // EVENT FILTERING
+        // EVENT SECTION
         // =========================
 
         Label eventsTitle =
@@ -291,7 +311,8 @@ public class DashboardApplication extends Application {
         eventSearchField.setMaxWidth(500);
         eventSearchField.setPrefHeight(38);
 
-        eventSearchField.textProperty()
+        eventSearchField
+                .textProperty()
                 .addListener(
                         (observable, oldValue, newValue) -> {
 
@@ -331,7 +352,9 @@ public class DashboardApplication extends Application {
                 );
 
         TableView<SecurityEvent> eventTable =
-                createEventTable(filteredEvents);
+                createEventTable(
+                        filteredEvents
+                );
 
         // =========================
         // Main layout
@@ -353,7 +376,9 @@ public class DashboardApplication extends Application {
                         eventTable
                 );
 
-        content.setAlignment(Pos.TOP_CENTER);
+        content.setAlignment(
+                Pos.TOP_CENTER
+        );
 
         content.setPadding(
                 new Insets(40)
@@ -365,6 +390,10 @@ public class DashboardApplication extends Application {
         scrollPane.setFitToWidth(true);
         scrollPane.setPannable(true);
 
+        // =========================
+        // Scene
+        // =========================
+
         Scene scene =
                 new Scene(
                         scrollPane,
@@ -372,20 +401,28 @@ public class DashboardApplication extends Application {
                         750
                 );
 
+        scene.getStylesheets().add(
+                Objects.requireNonNull(
+                        getClass()
+                                .getResource(
+                                        "/dashboard.css"
+                                )
+                ).toExternalForm()
+        );
+
         stage.setTitle(
                 "Mini SIEM Dashboard"
         );
 
         stage.setScene(scene);
-
         stage.show();
 
-        // Load existing data when dashboard starts
+        // Load existing SQLite data
         refreshData();
     }
 
     // =========================
-    // Process authentication log
+    // Process authentication.log
     // =========================
 
     private void processLogs() {
@@ -418,7 +455,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // Reload data from SQLite
+    // Refresh dashboard
     // =========================
 
     private void refreshData() {
@@ -466,7 +503,8 @@ public class DashboardApplication extends Application {
             String searchText) {
 
         return value != null
-                && value.toLowerCase()
+                && value
+                .toLowerCase()
                 .contains(searchText);
     }
 
@@ -476,9 +514,8 @@ public class DashboardApplication extends Application {
         Label label =
                 new Label(text);
 
-        label.setStyle(
-                "-fx-font-size: 20px;" +
-                        "-fx-font-weight: bold;"
+        label.getStyleClass().add(
+                "section-title"
         );
 
         return label;
@@ -510,6 +547,61 @@ public class DashboardApplication extends Application {
                 new PropertyValueFactory<>(
                         "severity"
                 )
+        );
+
+        // Color severity values
+        severityColumn.setCellFactory(column ->
+                new TableCell<SecurityAlert, String>() {
+
+                    @Override
+                    protected void updateItem(
+                            String severity,
+                            boolean empty) {
+
+                        super.updateItem(
+                                severity,
+                                empty
+                        );
+
+                        if (empty || severity == null) {
+
+                            setText(null);
+                            setStyle("");
+
+                            return;
+                        }
+
+                        setText(severity);
+
+                        switch (
+                                severity.toUpperCase()
+                        ) {
+
+                            case "HIGH" ->
+                                    setStyle(
+                                            "-fx-text-fill: #ef4444;" +
+                                                    "-fx-font-weight: bold;"
+                                    );
+
+                            case "MEDIUM" ->
+                                    setStyle(
+                                            "-fx-text-fill: #f59e0b;" +
+                                                    "-fx-font-weight: bold;"
+                                    );
+
+                            case "LOW" ->
+                                    setStyle(
+                                            "-fx-text-fill: #22c55e;" +
+                                                    "-fx-font-weight: bold;"
+                                    );
+
+                            default ->
+                                    setStyle(
+                                            "-fx-text-fill: #e2e8f0;"
+                                    );
+                        }
+                    }
+                }
         );
 
         TableColumn<SecurityAlert, String> usernameColumn =
@@ -633,13 +725,12 @@ public class DashboardApplication extends Application {
         Label title =
                 new Label(titleText);
 
-        title.setStyle(
-                "-fx-font-size: 16px;"
+        title.getStyleClass().add(
+                "card-title"
         );
 
-        value.setStyle(
-                "-fx-font-size: 32px;" +
-                        "-fx-font-weight: bold;"
+        value.getStyleClass().add(
+                "card-value"
         );
 
         VBox card =
@@ -658,11 +749,8 @@ public class DashboardApplication extends Application {
                 120
         );
 
-        card.setStyle(
-                "-fx-border-color: #cccccc;" +
-                        "-fx-border-radius: 8px;" +
-                        "-fx-background-radius: 8px;" +
-                        "-fx-padding: 20px;"
+        card.getStyleClass().add(
+                "dashboard-card"
         );
 
         return card;
