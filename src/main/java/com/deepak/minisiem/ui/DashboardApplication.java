@@ -2,7 +2,10 @@ package com.deepak.minisiem.ui;
 
 import com.deepak.minisiem.alert.SecurityAlert;
 import com.deepak.minisiem.database.DatabaseManager;
+import com.deepak.minisiem.engine.DetectionEngine;
 import com.deepak.minisiem.model.SecurityEvent;
+import com.deepak.minisiem.parser.LogParser;
+import com.deepak.minisiem.reader.LogReader;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
@@ -11,6 +14,7 @@ import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -27,33 +31,32 @@ import java.util.List;
 
 public class DashboardApplication extends Application {
 
+    private final DatabaseManager databaseManager =
+            new DatabaseManager();
+
+    private final LogReader logReader =
+            new LogReader();
+
+    private final LogParser logParser =
+            new LogParser();
+
+    private final DetectionEngine detectionEngine =
+            new DetectionEngine();
+
+    private final ObservableList<SecurityAlert> alertData =
+            FXCollections.observableArrayList();
+
+    private final ObservableList<SecurityEvent> eventData =
+            FXCollections.observableArrayList();
+
+    private Label totalEventsValue;
+    private Label totalAlertsValue;
+    private Label highSeverityValue;
+
     @Override
     public void start(Stage stage) {
 
-        DatabaseManager databaseManager =
-                new DatabaseManager();
-
-        // =========================
-        // Load data from SQLite
-        // =========================
-
-        int totalEvents =
-                databaseManager.getEventCount();
-
-        int totalAlerts =
-                databaseManager.getAlertCount();
-
-        List<SecurityAlert> alerts =
-                databaseManager.getAllAlerts();
-
-        List<SecurityEvent> events =
-                databaseManager.getAllEvents();
-
-        long highSeverityAlerts = alerts.stream()
-                .filter(alert ->
-                        alert.getSeverity()
-                                .equalsIgnoreCase("HIGH"))
-                .count();
+        databaseManager.createTables();
 
         // =========================
         // Dashboard title
@@ -71,53 +74,74 @@ public class DashboardApplication extends Application {
         // Summary cards
         // =========================
 
-        VBox eventCard = createCard(
-                "Total Events",
-                String.valueOf(totalEvents)
-        );
+        totalEventsValue =
+                new Label("0");
 
-        VBox alertCard = createCard(
-                "Total Alerts",
-                String.valueOf(totalAlerts)
-        );
+        totalAlertsValue =
+                new Label("0");
 
-        VBox highSeverityCard = createCard(
-                "High Severity",
-                String.valueOf(highSeverityAlerts)
-        );
+        highSeverityValue =
+                new Label("0");
 
-        HBox cards = new HBox(
-                20,
-                eventCard,
-                alertCard,
-                highSeverityCard
-        );
+        VBox eventCard =
+                createCard(
+                        "Total Events",
+                        totalEventsValue
+                );
+
+        VBox alertCard =
+                createCard(
+                        "Total Alerts",
+                        totalAlertsValue
+                );
+
+        VBox highSeverityCard =
+                createCard(
+                        "High Severity",
+                        highSeverityValue
+                );
+
+        HBox cards =
+                new HBox(
+                        20,
+                        eventCard,
+                        alertCard,
+                        highSeverityCard
+                );
 
         cards.setAlignment(Pos.CENTER);
 
         // =========================
-        // ALERT DATA
+        // Refresh button
         // =========================
 
-        ObservableList<SecurityAlert> alertData =
-                FXCollections.observableArrayList(alerts);
+        Button refreshButton =
+                new Button("Refresh");
+
+        refreshButton.setPrefWidth(120);
+        refreshButton.setPrefHeight(38);
+
+        refreshButton.setOnAction(event -> {
+
+            processLogs();
+            refreshData();
+
+        });
+
+        // =========================
+        // ALERT FILTERING
+        // =========================
+
+        Label alertsTitle =
+                createSectionTitle(
+                        "SECURITY ALERTS"
+                );
 
         FilteredList<SecurityAlert> filteredAlerts =
                 new FilteredList<>(
                         alertData,
                         alert -> true
                 );
-
-        // =========================
-        // Alert section title
-        // =========================
-
-        Label alertsTitle =
-                createSectionTitle("SECURITY ALERTS");
-
-        // =========================
-        // Alert search
-        // =========================
 
         TextField alertSearchField =
                 new TextField();
@@ -128,10 +152,6 @@ public class DashboardApplication extends Application {
 
         alertSearchField.setPrefWidth(380);
         alertSearchField.setPrefHeight(38);
-
-        // =========================
-        // Severity filter
-        // =========================
 
         ComboBox<String> severityFilter =
                 new ComboBox<>();
@@ -145,12 +165,6 @@ public class DashboardApplication extends Application {
 
         severityFilter.setValue("ALL");
 
-        severityFilter.setPrefWidth(140);
-
-        // =========================
-        // Attack type filter
-        // =========================
-
         ComboBox<String> typeFilter =
                 new ComboBox<>();
 
@@ -161,12 +175,6 @@ public class DashboardApplication extends Application {
         );
 
         typeFilter.setValue("ALL");
-
-        typeFilter.setPrefWidth(180);
-
-        // =========================
-        // Alert filtering
-        // =========================
 
         Runnable updateAlertFilter = () -> {
 
@@ -184,7 +192,6 @@ public class DashboardApplication extends Application {
 
             filteredAlerts.setPredicate(alert -> {
 
-                // Search matching
                 boolean searchMatch =
                         searchText.isEmpty()
                                 || containsIgnoreCase(
@@ -208,7 +215,6 @@ public class DashboardApplication extends Application {
                                 searchText
                         );
 
-                // Severity matching
                 boolean severityMatch =
                         selectedSeverity.equals("ALL")
                                 || alert.getSeverity()
@@ -216,7 +222,6 @@ public class DashboardApplication extends Application {
                                         selectedSeverity
                                 );
 
-                // Attack type matching
                 boolean typeMatch =
                         selectedType.equals("ALL")
                                 || alert.getAlertType()
@@ -230,75 +235,51 @@ public class DashboardApplication extends Application {
             });
         };
 
-        // Search listener
-        alertSearchField
-                .textProperty()
+        alertSearchField.textProperty()
                 .addListener(
                         (observable, oldValue, newValue) ->
                                 updateAlertFilter.run()
                 );
 
-        // Severity listener
-        severityFilter
-                .valueProperty()
+        severityFilter.valueProperty()
                 .addListener(
                         (observable, oldValue, newValue) ->
                                 updateAlertFilter.run()
                 );
 
-        // Type listener
-        typeFilter
-                .valueProperty()
+        typeFilter.valueProperty()
                 .addListener(
                         (observable, oldValue, newValue) ->
                                 updateAlertFilter.run()
                 );
 
-        // =========================
-        // Alert filter layout
-        // =========================
+        HBox alertFilters =
+                new HBox(
+                        15,
+                        alertSearchField,
+                        severityFilter,
+                        typeFilter
+                );
 
-        HBox alertFilters = new HBox(
-                15,
-                alertSearchField,
-                severityFilter,
-                typeFilter
-        );
-
-        alertFilters.setAlignment(
-                Pos.CENTER
-        );
-
-        // =========================
-        // Alert table
-        // =========================
+        alertFilters.setAlignment(Pos.CENTER);
 
         TableView<SecurityAlert> alertTable =
                 createAlertTable(filteredAlerts);
 
         // =========================
-        // EVENT DATA
+        // EVENT FILTERING
         // =========================
 
-        ObservableList<SecurityEvent> eventData =
-                FXCollections.observableArrayList(events);
+        Label eventsTitle =
+                createSectionTitle(
+                        "SECURITY EVENTS"
+                );
 
         FilteredList<SecurityEvent> filteredEvents =
                 new FilteredList<>(
                         eventData,
-                        event -> true
+                        securityEvent -> true
                 );
-
-        // =========================
-        // Event section title
-        // =========================
-
-        Label eventsTitle =
-                createSectionTitle("SECURITY EVENTS");
-
-        // =========================
-        // Event search
-        // =========================
 
         TextField eventSearchField =
                 new TextField();
@@ -310,8 +291,7 @@ public class DashboardApplication extends Application {
         eventSearchField.setMaxWidth(500);
         eventSearchField.setPrefHeight(38);
 
-        eventSearchField
-                .textProperty()
+        eventSearchField.textProperty()
                 .addListener(
                         (observable, oldValue, newValue) -> {
 
@@ -321,26 +301,27 @@ public class DashboardApplication extends Application {
                                             .toLowerCase();
 
                             filteredEvents.setPredicate(
-                                    event -> {
+                                    securityEvent -> {
 
                                         if (searchText.isEmpty()) {
                                             return true;
                                         }
 
                                         return containsIgnoreCase(
-                                                event.getUsername(),
+                                                securityEvent.getUsername(),
                                                 searchText
                                         )
                                                 || containsIgnoreCase(
-                                                event.getIpAddress(),
+                                                securityEvent.getIpAddress(),
                                                 searchText
                                         )
                                                 || containsIgnoreCase(
-                                                event.getEventType(),
+                                                securityEvent.getEventType(),
                                                 searchText
                                         )
                                                 || containsIgnoreCase(
-                                                event.getTimestamp()
+                                                securityEvent
+                                                        .getTimestamp()
                                                         .toString(),
                                                 searchText
                                         );
@@ -349,52 +330,40 @@ public class DashboardApplication extends Application {
                         }
                 );
 
-        // =========================
-        // Event table
-        // =========================
-
         TableView<SecurityEvent> eventTable =
                 createEventTable(filteredEvents);
 
         // =========================
-        // Main dashboard content
+        // Main layout
         // =========================
 
-        VBox content = new VBox(
-                30,
-                title,
-                cards,
+        VBox content =
+                new VBox(
+                        30,
+                        title,
+                        cards,
+                        refreshButton,
 
-                alertsTitle,
-                alertFilters,
-                alertTable,
+                        alertsTitle,
+                        alertFilters,
+                        alertTable,
 
-                eventsTitle,
-                eventSearchField,
-                eventTable
-        );
+                        eventsTitle,
+                        eventSearchField,
+                        eventTable
+                );
 
-        content.setAlignment(
-                Pos.TOP_CENTER
-        );
+        content.setAlignment(Pos.TOP_CENTER);
 
         content.setPadding(
                 new Insets(40)
         );
-
-        // =========================
-        // Scroll Pane
-        // =========================
 
         ScrollPane scrollPane =
                 new ScrollPane(content);
 
         scrollPane.setFitToWidth(true);
         scrollPane.setPannable(true);
-
-        // =========================
-        // Scene
-        // =========================
 
         Scene scene =
                 new Scene(
@@ -410,10 +379,86 @@ public class DashboardApplication extends Application {
         stage.setScene(scene);
 
         stage.show();
+
+        // Load existing data when dashboard starts
+        refreshData();
     }
 
     // =========================
-    // Case-insensitive matching
+    // Process authentication log
+    // =========================
+
+    private void processLogs() {
+
+        List<String> logLines =
+                logReader.readLogFile();
+
+        for (String line : logLines) {
+
+            SecurityEvent securityEvent =
+                    logParser.parse(line);
+
+            databaseManager.saveEvent(
+                    securityEvent
+            );
+        }
+
+        List<SecurityEvent> events =
+                databaseManager.getAllEvents();
+
+        List<SecurityAlert> detectedAlerts =
+                detectionEngine.detect(events);
+
+        for (SecurityAlert alert : detectedAlerts) {
+
+            databaseManager.saveAlert(
+                    alert
+            );
+        }
+    }
+
+    // =========================
+    // Reload data from SQLite
+    // =========================
+
+    private void refreshData() {
+
+        alertData.setAll(
+                databaseManager.getAllAlerts()
+        );
+
+        eventData.setAll(
+                databaseManager.getAllEvents()
+        );
+
+        totalEventsValue.setText(
+                String.valueOf(
+                        databaseManager.getEventCount()
+                )
+        );
+
+        totalAlertsValue.setText(
+                String.valueOf(
+                        databaseManager.getAlertCount()
+                )
+        );
+
+        long highSeverityCount =
+                alertData.stream()
+                        .filter(alert ->
+                                alert.getSeverity()
+                                        .equalsIgnoreCase("HIGH"))
+                        .count();
+
+        highSeverityValue.setText(
+                String.valueOf(
+                        highSeverityCount
+                )
+        );
+    }
+
+    // =========================
+    // Utility
     // =========================
 
     private boolean containsIgnoreCase(
@@ -424,10 +469,6 @@ public class DashboardApplication extends Application {
                 && value.toLowerCase()
                 .contains(searchText);
     }
-
-    // =========================
-    // Section title
-    // =========================
 
     private Label createSectionTitle(
             String text) {
@@ -444,7 +485,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // Alert Table
+    // Alert table
     // =========================
 
     private TableView<SecurityAlert> createAlertTable(
@@ -518,7 +559,7 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // Event Table
+    // Event table
     // =========================
 
     private TableView<SecurityEvent> createEventTable(
@@ -582,18 +623,15 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // Dashboard Card
+    // Dashboard card
     // =========================
 
     private VBox createCard(
             String titleText,
-            String valueText) {
+            Label value) {
 
         Label title =
                 new Label(titleText);
-
-        Label value =
-                new Label(valueText);
 
         title.setStyle(
                 "-fx-font-size: 16px;"
