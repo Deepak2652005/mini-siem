@@ -9,36 +9,59 @@ public class SecurityEvent {
     private final String username;
     private final String ipAddress;
 
-    // Constructor
+    // Unique ID from the original event source.
+    // Windows events will use EventRecordID.
+    // Demo log events can leave this null.
+    private final String sourceEventId;
+
+    // Used by your existing demo log code
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
             String username,
             String ipAddress) {
 
+        this(
+                timestamp,
+                eventType,
+                username,
+                ipAddress,
+                null
+        );
+    }
+
+    // Used by Windows Event Log
+    public SecurityEvent(
+            LocalDateTime timestamp,
+            String eventType,
+            String username,
+            String ipAddress,
+            String sourceEventId) {
+
         this.timestamp = timestamp;
         this.eventType = eventType;
         this.username = username;
         this.ipAddress = ipAddress;
+        this.sourceEventId = sourceEventId;
     }
 
-    // Get event timestamp
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
 
-    // Get event type
     public String getEventType() {
         return eventType;
     }
 
-    // Get username
     public String getUsername() {
         return username;
     }
 
-    // Get IP address
     public String getIpAddress() {
         return ipAddress;
+    }
+
+    public String getSourceEventId() {
+        return sourceEventId;
     }
 }

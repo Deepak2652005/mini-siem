@@ -6,6 +6,7 @@ import com.deepak.minisiem.engine.DetectionEngine;
 import com.deepak.minisiem.model.SecurityEvent;
 import com.deepak.minisiem.parser.LogParser;
 import com.deepak.minisiem.reader.LogReader;
+import com.deepak.minisiem.reader.WindowsEventLogReader;
 
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
@@ -53,6 +54,9 @@ public class DashboardApplication extends Application {
     private final LogReader logReader =
             new LogReader();
 
+    private final WindowsEventLogReader windowsEventLogReader =
+            new WindowsEventLogReader();
+
     private final LogParser logParser =
             new LogParser();
 
@@ -83,7 +87,6 @@ public class DashboardApplication extends Application {
     private PieChart eventTypeChart;
     private PieChart alertTypeChart;
 
-    // Keep Timeline referenced while application is running
     private Timeline clockTimeline;
 
     @Override
@@ -201,8 +204,27 @@ public class DashboardApplication extends Application {
         );
 
         // =========================
-        // REFRESH BUTTON
+        // DATA SOURCE + REFRESH
         // =========================
+
+        Label dataSourceLabel =
+                new Label("Data Source:");
+
+        ComboBox<String> dataSourceSelector =
+                new ComboBox<>();
+
+        dataSourceSelector.getItems().addAll(
+                "Demo Log File",
+                "Windows Event Log"
+        );
+
+        dataSourceSelector.setValue(
+                "Demo Log File"
+        );
+
+        dataSourceSelector.setPrefWidth(
+                190
+        );
 
         Button refreshButton =
                 new Button("Refresh");
@@ -217,10 +239,33 @@ public class DashboardApplication extends Application {
 
         refreshButton.setOnAction(event -> {
 
-            processLogs();
-            refreshData();
+            String selectedSource =
+                    dataSourceSelector.getValue();
 
+            if ("Windows Event Log"
+                    .equals(selectedSource)) {
+
+                processWindowsEvents();
+
+            } else {
+
+                processLogs();
+            }
+
+            refreshData();
         });
+
+        HBox dataSourceControls =
+                new HBox(
+                        15,
+                        dataSourceLabel,
+                        dataSourceSelector,
+                        refreshButton
+                );
+
+        dataSourceControls.setAlignment(
+                Pos.CENTER
+        );
 
         // =========================
         // SECURITY ALERTS
@@ -515,7 +560,7 @@ public class DashboardApplication extends Application {
                         30,
                         header,
                         cards,
-                        refreshButton,
+                        dataSourceControls,
 
                         alertsTitle,
                         alertFilters,
@@ -580,7 +625,6 @@ public class DashboardApplication extends Application {
 
         stage.show();
 
-        // Load database data
         refreshData();
     }
 
@@ -637,10 +681,14 @@ public class DashboardApplication extends Application {
     }
 
     // =========================
-    // PROCESS LOG FILE
+    // PROCESS DEMO LOG FILE
     // =========================
 
     private void processLogs() {
+
+        System.out.println(
+                "Reading demo authentication log..."
+        );
 
         List<String> logLines =
                 logReader.readLogFile();
@@ -675,6 +723,66 @@ public class DashboardApplication extends Application {
                 );
             }
         }
+
+        System.out.println(
+                "Demo log processing complete."
+        );
+    }
+
+    // =========================
+    // PROCESS WINDOWS EVENT LOG
+    // =========================
+
+    private void processWindowsEvents() {
+
+        System.out.println(
+                "Reading Windows Security Event Log..."
+        );
+
+        List<SecurityEvent> windowsEvents =
+                windowsEventLogReader
+                        .readSecurityEvents();
+
+        System.out.println(
+                "Windows events retrieved: "
+                        + windowsEvents.size()
+        );
+
+        for (SecurityEvent securityEvent
+                : windowsEvents) {
+
+            if (securityEvent != null) {
+
+                databaseManager.saveEvent(
+                        securityEvent
+                );
+            }
+        }
+
+        // Reload events from SQLite
+        List<SecurityEvent> allEvents =
+                databaseManager.getAllEvents();
+
+        // Run detection engine
+        List<SecurityAlert> detectedAlerts =
+                detectionEngine.detect(
+                        allEvents
+                );
+
+        for (SecurityAlert alert
+                : detectedAlerts) {
+
+            if (alert != null) {
+
+                databaseManager.saveAlert(
+                        alert
+                );
+            }
+        }
+
+        System.out.println(
+                "Windows Event Log processing complete."
+        );
     }
 
     // =========================
@@ -722,7 +830,6 @@ public class DashboardApplication extends Application {
                 )
         );
 
-        // Update both analytics charts
         updateEventTypeChart();
         updateAlertTypeChart();
     }
@@ -938,7 +1045,6 @@ public class DashboardApplication extends Application {
                 )
         );
 
-        // Severity colors
         severityColumn.setCellFactory(
                 column ->
                         new TableCell<>() {
