@@ -66,7 +66,7 @@ public class WindowsEventLogReader {
                 $events = Get-WinEvent `
                     -FilterHashtable @{
                         LogName='Security';
-                        Id=4624,4625,4672,4688
+                        Id=4624,4625,4672,4688,4720,4726,4728,4732
                     } `
                     -MaxEvents %d `
                     -ErrorAction SilentlyContinue
@@ -138,12 +138,21 @@ public class WindowsEventLogReader {
                         ''
 
                     if ($id -eq 4688) {
-
-                        $details =
-                            $data['NewProcessName']
-
-                        $commandLine =
-                            $data['CommandLine']
+                        $details = $data['NewProcessName']
+                        $commandLine = $data['CommandLine']
+                    }
+                    elseif ($id -in @(4720,4726,4728,4732)) {
+                        $target = $data['TargetUserName']
+                        $group = $data['TargetUserName']
+                        if (-not [string]::IsNullOrWhiteSpace($data['GroupName'])) {
+                            $group = $data['GroupName']
+                        }
+                        if (-not [string]::IsNullOrWhiteSpace($target)) {
+                            $details = "Target=$target; Group=$group; Subject=$($data['SubjectUserName'])"
+                        }
+                        else {
+                            $details = "Group=$group; Member=$($data['MemberName']); Subject=$($data['SubjectUserName'])"
+                        }
                     }
 
                     // =========================
@@ -422,6 +431,22 @@ public class WindowsEventLogReader {
                 case 4688 ->
                         eventType =
                                 "PROCESS_CREATED";
+
+                case 4720 ->
+                        eventType =
+                                "ACCOUNT_CREATED";
+
+                case 4726 ->
+                        eventType =
+                                "ACCOUNT_DELETED";
+
+                case 4728 ->
+                        eventType =
+                                "GLOBAL_GROUP_MEMBER_ADDED";
+
+                case 4732 ->
+                        eventType =
+                                "LOCAL_GROUP_MEMBER_ADDED";
 
                 default -> {
 
