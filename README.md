@@ -52,6 +52,9 @@ Current detections include:
 | `BRUTE_FORCE` | Detects repeated failed login attempts | HIGH |
 | `PASSWORD_SPRAY` | Detects login attempts targeting multiple usernames | HIGH |
 | `SUSPICIOUS_POWERSHELL` | Detects suspicious PowerShell execution patterns | HIGH |
+| `ACCOUNT_CREATED` | Windows Event ID 4720: user account created | MEDIUM |
+| `ACCOUNT_DELETED` | Windows Event ID 4726: user account deleted | MEDIUM |
+| `PRIVILEGED_GROUP_CHANGE` | Event IDs 4728 and 4732: member added to a security-enabled global/local group | HIGH |
 
 The detection architecture can be extended with additional rules.
 
@@ -354,7 +357,7 @@ The main learning objectives include:
 
 Possible future additions include:
 
-- More Windows Event ID detections
+- More Windows Event ID detections (the starter account/group rules now cover 4720, 4726, 4728 and 4732)
 - MITRE ATT&CK technique mapping
 - Alert risk scoring
 - Alert status such as Open / Investigating / Resolved
