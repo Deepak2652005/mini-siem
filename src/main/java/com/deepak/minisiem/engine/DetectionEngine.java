@@ -60,6 +60,11 @@ public class DetectionEngine {
                 alerts
         );
 
+        detectAccountChanges(
+                sortedEvents,
+                alerts
+        );
+
         return alerts;
     }
 
@@ -268,6 +273,60 @@ public class DetectionEngine {
                     );
 
                     break;
+                }
+            }
+        }
+    }
+
+    // =========================
+    // ACCOUNT / GROUP CHANGE DETECTION
+    // =========================
+
+    private void detectAccountChanges(
+            List<SecurityEvent> events,
+            List<SecurityAlert> alerts) {
+
+        for (SecurityEvent event : events) {
+            if (event == null || event.getEventType() == null) {
+                continue;
+            }
+
+            String eventType = event.getEventType().toUpperCase();
+            String username = safe(event.getUsername(), "UNKNOWN");
+            String ipAddress = safe(event.getIpAddress(), "LOCAL");
+            String details = safe(event.getDetails(), "");
+
+            switch (eventType) {
+                case "ACCOUNT_CREATED" -> alerts.add(new SecurityAlert(
+                        "ACCOUNT_CREATED",
+                        "MEDIUM",
+                        username,
+                        ipAddress,
+                        "Windows Event ID 4720: user account created. " + details
+                ));
+                case "ACCOUNT_DELETED" -> alerts.add(new SecurityAlert(
+                        "ACCOUNT_DELETED",
+                        "MEDIUM",
+                        username,
+                        ipAddress,
+                        "Windows Event ID 4726: user account deleted. " + details
+                ));
+                case "GLOBAL_GROUP_MEMBER_ADDED" -> alerts.add(new SecurityAlert(
+                        "PRIVILEGED_GROUP_CHANGE",
+                        "HIGH",
+                        username,
+                        ipAddress,
+                        "Windows Event ID 4728: member added to a security-enabled global group. " + details
+                ));
+                case "LOCAL_GROUP_MEMBER_ADDED" -> alerts.add(new SecurityAlert(
+                        "PRIVILEGED_GROUP_CHANGE",
+                        "HIGH",
+                        username,
+                        ipAddress,
+                        "Windows Event ID 4732: member added to a security-enabled local group. " + details
+                ));
+                default -> {
+                    // No account-change rule applies to this event type.
                 }
             }
         }
