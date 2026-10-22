@@ -1,3 +1,4 @@
+
 package com.deepak.minisiem.engine;
 
 import com.deepak.minisiem.alert.SecurityAlert;
@@ -5,111 +6,93 @@ import com.deepak.minisiem.model.SecurityEvent;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public class DetectionEngine {
 
     private static final int BRUTE_FORCE_THRESHOLD = 3;
-
     private static final long BRUTE_FORCE_WINDOW_SECONDS = 60;
 
     private static final int PASSWORD_SPRAY_USER_THRESHOLD = 4;
-
     private static final long PASSWORD_SPRAY_WINDOW_SECONDS = 60;
 
-    // =========================
-    // MAIN DETECTION ENTRY
-    // =========================
+    // Main detection entry point
+    public List<SecurityAlert> detect(List<SecurityEvent> events) {
 
-    public List<SecurityAlert> detect(
-            List<SecurityEvent> events) {
-
-        List<SecurityAlert> alerts =
-                new ArrayList<>();
+        List<SecurityAlert> alerts = new ArrayList<>();
 
         if (events == null || events.isEmpty()) {
             return alerts;
         }
 
-        List<SecurityEvent> sortedEvents =
-                new ArrayList<>(events);
+        List<SecurityEvent> sortedEvents = new ArrayList<>();
+
+        for (SecurityEvent event : events) {
+            if (event != null && event.getTimestamp() != null) {
+                sortedEvents.add(event);
+            }
+        }
 
         sortedEvents.sort(
-                Comparator.comparing(
-                        SecurityEvent::getTimestamp
-                )
+                Comparator.comparing(SecurityEvent::getTimestamp)
         );
 
-        detectBruteForce(
-                sortedEvents,
-                alerts
-        );
-
-        detectPasswordSpray(
-                sortedEvents,
-                alerts
-        );
-
-        detectSuspiciousProcesses(
-                sortedEvents,
-                alerts
-        );
+        detectBruteForce(sortedEvents, alerts);
+        detectPasswordSpray(sortedEvents, alerts);
+        detectSuspiciousProcesses(sortedEvents, alerts);
 
         return alerts;
     }
 
-    // =========================
-    // BRUTE FORCE
-    // =========================
-
+    // Brute-force detection
     private void detectBruteForce(
             List<SecurityEvent> events,
             List<SecurityAlert> alerts) {
 
+        Set<String> alertedAccounts = new HashSet<>();
+
         for (int i = 0; i < events.size(); i++) {
 
-            SecurityEvent first =
-                    events.get(i);
+            SecurityEvent first = events.get(i);
 
             if (!isFailedLogin(first)) {
                 continue;
             }
 
-            String username =
-                    first.getUsername();
+            String username = first.getUsername();
+            String ipAddress = first.getIpAddress();
 
-            String ipAddress =
-                    first.getIpAddress();
+            if (username == null || username.isBlank()
+                    || ipAddress == null || ipAddress.isBlank()) {
+                continue;
+            }
 
-            LocalDateTime startTime =
-                    first.getTimestamp();
+            String accountKey =
+                    username.toLowerCase(Locale.ROOT)
+                            + "|"
+                            + ipAddress.toLowerCase(Locale.ROOT);
 
+            if (alertedAccounts.contains(accountKey)) {
+                continue;
+            }
+
+            LocalDateTime startTime = first.getTimestamp();
             int attempts = 1;
+            LocalDateTime lastFailure = startTime;
 
-            LocalDateTime lastFailure =
-                    startTime;
+            for (int j = i + 1; j < events.size(); j++) {
 
-            for (int j = i + 1;
-                 j < events.size();
-                 j++) {
+                SecurityEvent candidate = events.get(j);
 
-                SecurityEvent candidate =
-                        events.get(j);
-
-                if (candidate.getTimestamp() == null) {
-                    continue;
-                }
-
-                long seconds =
-                        Duration.between(
-                                startTime,
-                                candidate.getTimestamp()
-                        ).getSeconds();
+                long seconds = Duration.between(
+                        startTime,
+                        candidate.getTimestamp()
+                ).getSeconds();
 
                 if (seconds > BRUTE_FORCE_WINDOW_SECONDS) {
                     break;
@@ -119,46 +102,34 @@ public class DetectionEngine {
                     continue;
                 }
 
-                boolean sameUser =
-                        equalsIgnoreCase(
-                                username,
-                                candidate.getUsername()
-                        );
+                boolean sameUser = equalsIgnoreCase(
+                        username,
+                        candidate.getUsername()
+                );
 
-                boolean sameIp =
-                        equalsIgnoreCase(
-                                ipAddress,
-                                candidate.getIpAddress()
-                        );
+                boolean sameIp = equalsIgnoreCase(
+                        ipAddress,
+                        candidate.getIpAddress()
+                );
 
                 if (sameUser && sameIp) {
-
                     attempts++;
-
-                    lastFailure =
-                            candidate.getTimestamp();
+                    lastFailure = candidate.getTimestamp();
                 }
 
                 if (attempts >= BRUTE_FORCE_THRESHOLD) {
 
-                    long actualWindow =
-                            Duration.between(
-                                    startTime,
-                                    lastFailure
-                            ).getSeconds();
+                    long actualWindow = Duration.between(
+                            startTime,
+                            lastFailure
+                    ).getSeconds();
 
                     alerts.add(
                             new SecurityAlert(
                                     "BRUTE_FORCE",
                                     "HIGH",
-                                    safe(
-                                            username,
-                                            "UNKNOWN"
-                                    ),
-                                    safe(
-                                            ipAddress,
-                                            "UNKNOWN"
-                                    ),
+                                    username,
+                                    ipAddress,
                                     attempts
                                             + " failed login attempts detected within "
                                             + actualWindow
@@ -166,64 +137,58 @@ public class DetectionEngine {
                             )
                     );
 
+                    alertedAccounts.add(accountKey);
                     break;
                 }
             }
         }
     }
 
-    // =========================
-    // PASSWORD SPRAY
-    // =========================
-
+    // Password-spray detection
     private void detectPasswordSpray(
             List<SecurityEvent> events,
             List<SecurityAlert> alerts) {
 
-        for (int i = 0;
-             i < events.size();
-             i++) {
+        Set<String> alertedIps = new HashSet<>();
 
-            SecurityEvent first =
-                    events.get(i);
+        for (int i = 0; i < events.size(); i++) {
+
+            SecurityEvent first = events.get(i);
 
             if (!isFailedLogin(first)) {
                 continue;
             }
 
-            String ipAddress =
-                    first.getIpAddress();
+            String ipAddress = first.getIpAddress();
 
-            LocalDateTime startTime =
-                    first.getTimestamp();
+            if (ipAddress == null || ipAddress.isBlank()) {
+                continue;
+            }
 
-            Set<String> usernames =
-                    new HashSet<>();
+            String ipKey = ipAddress.toLowerCase(Locale.ROOT);
 
-            if (first.getUsername() != null) {
+            if (alertedIps.contains(ipKey)) {
+                continue;
+            }
 
+            LocalDateTime startTime = first.getTimestamp();
+            Set<String> usernames = new HashSet<>();
+
+            if (first.getUsername() != null
+                    && !first.getUsername().isBlank()) {
                 usernames.add(
-                        first.getUsername()
-                                .toLowerCase()
+                        first.getUsername().toLowerCase(Locale.ROOT)
                 );
             }
 
-            for (int j = i + 1;
-                 j < events.size();
-                 j++) {
+            for (int j = i + 1; j < events.size(); j++) {
 
-                SecurityEvent candidate =
-                        events.get(j);
+                SecurityEvent candidate = events.get(j);
 
-                if (candidate.getTimestamp() == null) {
-                    continue;
-                }
-
-                long seconds =
-                        Duration.between(
-                                startTime,
-                                candidate.getTimestamp()
-                        ).getSeconds();
+                long seconds = Duration.between(
+                        startTime,
+                        candidate.getTimestamp()
+                ).getSeconds();
 
                 if (seconds > PASSWORD_SPRAY_WINDOW_SECONDS) {
                     break;
@@ -235,31 +200,25 @@ public class DetectionEngine {
 
                 if (!equalsIgnoreCase(
                         ipAddress,
-                        candidate.getIpAddress()
-                )) {
+                        candidate.getIpAddress())) {
                     continue;
                 }
 
-                if (candidate.getUsername() != null) {
-
+                if (candidate.getUsername() != null
+                        && !candidate.getUsername().isBlank()) {
                     usernames.add(
-                            candidate.getUsername()
-                                    .toLowerCase()
+                            candidate.getUsername().toLowerCase(Locale.ROOT)
                     );
                 }
 
-                if (usernames.size()
-                        >= PASSWORD_SPRAY_USER_THRESHOLD) {
+                if (usernames.size() >= PASSWORD_SPRAY_USER_THRESHOLD) {
 
                     alerts.add(
                             new SecurityAlert(
                                     "PASSWORD_SPRAY",
                                     "HIGH",
                                     "MULTIPLE_USERS",
-                                    safe(
-                                            ipAddress,
-                                            "UNKNOWN"
-                                    ),
+                                    ipAddress,
                                     usernames.size()
                                             + " different usernames targeted within "
                                             + PASSWORD_SPRAY_WINDOW_SECONDS
@@ -267,294 +226,132 @@ public class DetectionEngine {
                             )
                     );
 
+                    alertedIps.add(ipKey);
                     break;
                 }
             }
         }
     }
 
-    // =========================
-    // PROCESS DETECTION
-    // =========================
-
+    // Suspicious process detection
     private void detectSuspiciousProcesses(
             List<SecurityEvent> events,
             List<SecurityAlert> alerts) {
 
         for (SecurityEvent event : events) {
 
-            if (event == null) {
+            if (!"PROCESS_CREATED".equalsIgnoreCase(
+                    event.getEventType())) {
                 continue;
             }
 
-            if (!"PROCESS_CREATED"
-                    .equalsIgnoreCase(
-                            event.getEventType()
-                    )) {
-
-                continue;
-            }
-
-            String processPath =
-                    lower(
-                            event.getDetails()
-                    );
-
-            String commandLine =
-                    lower(
-                            event.getCommandLine()
-                    );
+            String processPath = lower(event.getDetails());
+            String commandLine = lower(event.getCommandLine());
 
             if (processPath.isBlank()) {
                 continue;
             }
 
-            // =========================
-            // MINI SIEM COLLECTOR
-            // EXCLUSION
-            // =========================
-
-            if (isMiniSiemCollector(
-                    processPath,
-                    commandLine
-            )) {
-
+            if (isMiniSiemCollector(processPath, commandLine)) {
                 continue;
             }
 
-            // =========================
-            // POWERSHELL ENCODED COMMAND
-            // =========================
-
-            if (processPath.contains(
-                    "powershell.exe"
-            )
-                    && containsAny(
-                    commandLine,
-                    "-encodedcommand",
-                    "-enc ",
-                    " -e "
-            )) {
+            if (processPath.contains("powershell.exe")
+                    && containsAny(commandLine,
+                    "-encodedcommand", "-enc ", " -e ")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "SUSPICIOUS_POWERSHELL",
-                        "HIGH",
+                        alerts, event, "SUSPICIOUS_POWERSHELL", "HIGH",
                         "PowerShell encoded command detected."
                 );
-
                 continue;
             }
 
-            // =========================
-            // EXECUTION POLICY BYPASS
-            // =========================
-
-            if (processPath.contains(
-                    "powershell.exe"
-            )
-                    && containsAny(
-                    commandLine,
-                    "-executionpolicy bypass",
-                    "-ep bypass"
-            )) {
+            if (processPath.contains("powershell.exe")
+                    && containsAny(commandLine,
+                    "-executionpolicy bypass", "-ep bypass")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "SUSPICIOUS_POWERSHELL",
-                        "HIGH",
+                        alerts, event, "SUSPICIOUS_POWERSHELL", "HIGH",
                         "PowerShell execution policy bypass detected."
                 );
-
                 continue;
             }
 
-            // =========================
-            // HIDDEN POWERSHELL
-            // =========================
-
-            if (processPath.contains(
-                    "powershell.exe"
-            )
-                    && containsAny(
-                    commandLine,
-                    "-windowstyle hidden",
-                    "-w hidden"
-            )) {
+            if (processPath.contains("powershell.exe")
+                    && containsAny(commandLine,
+                    "-windowstyle hidden", "-w hidden")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "SUSPICIOUS_POWERSHELL",
-                        "HIGH",
+                        alerts, event, "SUSPICIOUS_POWERSHELL", "HIGH",
                         "Hidden PowerShell execution detected."
                 );
-
                 continue;
             }
 
-            // =========================
-            // POWERSHELL NETWORK / DOWNLOAD
-            // =========================
-
-            if (processPath.contains(
-                    "powershell.exe"
-            )
-                    && containsAny(
-                    commandLine,
-                    "invoke-webrequest",
-                    "iwr ",
-                    "downloadstring",
-                    "downloadfile"
-            )) {
+            if (processPath.contains("powershell.exe")
+                    && containsAny(commandLine,
+                    "invoke-webrequest", "iwr ",
+                    "downloadstring", "downloadfile")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "SUSPICIOUS_POWERSHELL",
-                        "HIGH",
+                        alerts, event, "SUSPICIOUS_POWERSHELL", "HIGH",
                         "PowerShell network/download behavior detected."
                 );
-
                 continue;
             }
 
-            // =========================
-            // CMD -> POWERSHELL
-            // =========================
-
-            if (processPath.contains(
-                    "cmd.exe"
-            )
-                    && commandLine.contains(
-                    "powershell"
-            )) {
+            if (processPath.contains("cmd.exe")
+                    && commandLine.contains("powershell")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "SUSPICIOUS_COMMAND",
-                        "MEDIUM",
+                        alerts, event, "SUSPICIOUS_COMMAND", "MEDIUM",
                         "Command Prompt launched PowerShell."
                 );
-
                 continue;
             }
 
-            // =========================
-            // MSHTA REMOTE CONTENT
-            // =========================
-
-            if (processPath.contains(
-                    "mshta.exe"
-            )
-                    && containsAny(
-                    commandLine,
-                    "http://",
-                    "https://"
-            )) {
+            if (processPath.contains("mshta.exe")
+                    && containsAny(commandLine, "http://", "https://")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "LOLBIN_EXECUTION",
-                        "HIGH",
+                        alerts, event, "LOLBIN_EXECUTION", "HIGH",
                         "MSHTA launched remote content."
                 );
-
                 continue;
             }
 
-            // =========================
-            // SCRIPT HOST
-            // =========================
-
-            if ((processPath.contains(
-                    "wscript.exe"
-            )
-                    || processPath.contains(
-                    "cscript.exe"
-            ))
-                    && containsAny(
-                    commandLine,
-                    ".vbs",
-                    ".js",
-                    ".jse",
-                    ".wsf"
-            )) {
+            if ((processPath.contains("wscript.exe")
+                    || processPath.contains("cscript.exe"))
+                    && containsAny(commandLine,
+                    ".vbs", ".js", ".jse", ".wsf")) {
 
                 createProcessAlert(
-                        alerts,
-                        event,
-                        "SCRIPT_EXECUTION",
-                        "MEDIUM",
+                        alerts, event, "SCRIPT_EXECUTION", "MEDIUM",
                         "Windows Script Host executed a script."
                 );
             }
         }
     }
 
-    // =========================
-    // MINI SIEM COLLECTOR
-    // EXCLUSION
-    // =========================
-
+    // Exclude the Mini SIEM's own log-collection PowerShell command
     private boolean isMiniSiemCollector(
             String processPath,
             String commandLine) {
 
-        if (processPath == null
-                || commandLine == null) {
-
+        if (processPath == null || commandLine == null) {
             return false;
         }
 
-        String process =
-                processPath.toLowerCase();
-
-        String command =
-                commandLine.toLowerCase();
-
-        // Must actually be PowerShell
-        if (!process.contains(
-                "powershell.exe"
-        )) {
-
+        if (!processPath.contains("powershell.exe")) {
             return false;
         }
 
-        /*
-         * Mini SIEM uses PowerShell like:
-         *
-         * powershell.exe
-         * -NoProfile
-         * -ExecutionPolicy Bypass
-         * -Command
-         * Get-WinEvent -FilterHashtable ...
-         *
-         * This should NOT alert on itself.
-         */
-
-        boolean usesGetWinEvent =
-                command.contains(
-                        "get-winevent"
-                );
-
-        boolean usesFilterHashtable =
-                command.contains(
-                        "filterhashtable"
-                );
-
-        return usesGetWinEvent
-                && usesFilterHashtable;
+        return commandLine.contains("get-winevent")
+                && commandLine.contains("filterhashtable");
     }
 
-    // =========================
-    // CREATE PROCESS ALERT
-    // =========================
-
+    // Create a process-related alert
     private void createProcessAlert(
             List<SecurityAlert> alerts,
             SecurityEvent event,
@@ -562,118 +359,72 @@ public class DetectionEngine {
             String severity,
             String description) {
 
-        String processPath =
-                safe(
-                        event.getDetails(),
-                        "UNKNOWN_PROCESS"
-                );
+        String processPath = safe(
+                event.getDetails(),
+                "UNKNOWN_PROCESS"
+        );
 
-        String commandLine =
-                safe(
-                        event.getCommandLine(),
-                        "NO_COMMAND_LINE"
-                );
+        String commandLine = safe(
+                event.getCommandLine(),
+                "NO_COMMAND_LINE"
+        );
 
-        String timestamp =
-                event.getTimestamp() != null
-                        ? event.getTimestamp()
-                        .toString()
-                        : "UNKNOWN_TIME";
+        String timestamp = event.getTimestamp() != null
+                ? event.getTimestamp().toString()
+                : "UNKNOWN_TIME";
 
-        String message =
-                description
-                        + " Process: "
-                        + processPath
-                        + " | Command: "
-                        + commandLine
-                        + " | Time: "
-                        + timestamp;
+        String message = description
+                + " Process: " + processPath
+                + " | Command: " + commandLine
+                + " | Time: " + timestamp;
 
         alerts.add(
                 new SecurityAlert(
                         alertType,
                         severity,
-                        safe(
-                                event.getUsername(),
-                                "UNKNOWN"
-                        ),
-                        safe(
-                                event.getIpAddress(),
-                                "LOCAL"
-                        ),
+                        safe(event.getUsername(), "UNKNOWN"),
+                        safe(event.getIpAddress(), "LOCAL"),
                         message
                 )
         );
     }
 
-    // =========================
-    // HELPERS
-    // =========================
-
-    private boolean isFailedLogin(
-            SecurityEvent event) {
-
+    // Helpers
+    private boolean isFailedLogin(SecurityEvent event) {
         return event != null
                 && event.getTimestamp() != null
-                && "LOGIN_FAILED"
-                .equalsIgnoreCase(
-                        event.getEventType()
-                );
-    }
-
-    private boolean equalsIgnoreCase(
-            String first,
-            String second) {
-
-        return first != null
-                && second != null
-                && first.equalsIgnoreCase(
-                second
+                && "LOGIN_FAILED".equalsIgnoreCase(
+                event.getEventType()
         );
     }
 
-    private String safe(
-            String value,
-            String fallback) {
-
-        if (value == null
-                || value.isBlank()) {
-
-            return fallback;
-        }
-
-        return value;
+    private boolean equalsIgnoreCase(String first, String second) {
+        return first != null
+                && second != null
+                && first.equalsIgnoreCase(second);
     }
 
-    private String lower(
-            String value) {
-
-        if (value == null) {
-            return "";
-        }
-
-        return value.toLowerCase();
+    private String safe(String value, String fallback) {
+        return value == null || value.isBlank()
+                ? fallback
+                : value;
     }
 
-    private boolean containsAny(
-            String value,
-            String... patterns) {
+    private String lower(String value) {
+        return value == null
+                ? ""
+                : value.toLowerCase(Locale.ROOT);
+    }
 
-        if (value == null
-                || value.isBlank()) {
-
+    private boolean containsAny(String value, String... patterns) {
+        if (value == null || value.isBlank()) {
             return false;
         }
 
-        String lowerValue =
-                value.toLowerCase();
+        String lowerValue = value.toLowerCase(Locale.ROOT);
 
         for (String pattern : patterns) {
-
-            if (lowerValue.contains(
-                    pattern.toLowerCase()
-            )) {
-
+            if (lowerValue.contains(pattern.toLowerCase(Locale.ROOT))) {
                 return true;
             }
         }
