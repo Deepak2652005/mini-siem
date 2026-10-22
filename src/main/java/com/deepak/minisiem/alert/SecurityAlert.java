@@ -1,6 +1,9 @@
+
 package com.deepak.minisiem.alert;
 
-public class SecurityAlert {
+import java.util.Objects;
+
+public final class SecurityAlert {
 
     private final String alertType;
     private final String severity;
@@ -8,7 +11,6 @@ public class SecurityAlert {
     private final String ipAddress;
     private final String message;
 
-    // Constructor
     public SecurityAlert(
             String alertType,
             String severity,
@@ -16,35 +18,59 @@ public class SecurityAlert {
             String ipAddress,
             String message) {
 
-        this.alertType = alertType;
-        this.severity = severity;
-        this.username = username;
-        this.ipAddress = ipAddress;
-        this.message = message;
+        this.alertType = requireText(alertType, "alertType");
+        this.severity = validateSeverity(severity);
+        this.username = requireText(username, "username");
+        this.ipAddress = requireText(ipAddress, "ipAddress");
+        this.message = requireText(message, "message");
     }
 
-    // Get alert type
     public String getAlertType() {
         return alertType;
     }
 
-    // Get severity level
     public String getSeverity() {
         return severity;
     }
 
-    // Get affected username
     public String getUsername() {
         return username;
     }
 
-    // Get source IP address
     public String getIpAddress() {
         return ipAddress;
     }
 
-    // Get alert message
     public String getMessage() {
         return message;
+    }
+
+    private static String requireText(String value, String fieldName) {
+        Objects.requireNonNull(value, fieldName + " must not be null");
+
+        if (value.isBlank()) {
+            throw new IllegalArgumentException(
+                    fieldName + " must not be blank"
+            );
+        }
+
+        return value.trim();
+    }
+
+    private static String validateSeverity(String severity) {
+        String value = requireText(severity, "severity")
+                .toUpperCase(java.util.Locale.ROOT);
+
+        if (!value.equals("LOW")
+                && !value.equals("MEDIUM")
+                && !value.equals("HIGH")
+                && !value.equals("CRITICAL")
+                && !value.equals("INFO")) {
+            throw new IllegalArgumentException(
+                    "Unsupported severity: " + severity
+            );
+        }
+
+        return value;
     }
 }
