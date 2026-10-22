@@ -1,3 +1,4 @@
+
 package com.deepak.minisiem.detector;
 
 import com.deepak.minisiem.alert.SecurityAlert;
@@ -9,6 +10,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -18,11 +20,14 @@ public class PasswordSprayDetector {
     private static final long TIME_WINDOW_SECONDS = 120;
 
     public List<SecurityAlert> detect(List<SecurityEvent> events) {
+        List<SecurityAlert> alerts = new ArrayList<>();
+
+        if (events == null || events.isEmpty()) {
+            return alerts;
+        }
 
         Map<String, List<SecurityEvent>> eventsByIp =
                 groupFailedEventsByIp(events);
-
-        List<SecurityAlert> alerts = new ArrayList<>();
 
         for (Map.Entry<String, List<SecurityEvent>> entry
                 : eventsByIp.entrySet()) {
@@ -48,21 +53,29 @@ public class PasswordSprayDetector {
     private Map<String, List<SecurityEvent>> groupFailedEventsByIp(
             List<SecurityEvent> events) {
 
-        Map<String, List<SecurityEvent>> eventsByIp =
-                new HashMap<>();
+        Map<String, List<SecurityEvent>> eventsByIp = new HashMap<>();
 
         for (SecurityEvent event : events) {
-
-            if (!event.getEventType().equals("LOGIN_FAILED")) {
+            if (event == null
+                    || !"LOGIN_FAILED".equals(event.getEventType())
+                    || event.getTimestamp() == null) {
                 continue;
             }
 
-            eventsByIp
-                    .computeIfAbsent(
-                            event.getIpAddress(),
-                            ignoredKey -> new ArrayList<>()
-                    )
-                    .add(event);
+            String ipAddress = normalize(event.getIpAddress());
+            String username = normalize(event.getUsername());
+
+            if (ipAddress == null
+                    || username == null
+                    || "UNKNOWN".equalsIgnoreCase(username)
+                    || "LOCAL".equalsIgnoreCase(ipAddress)) {
+                continue;
+            }
+
+            eventsByIp.computeIfAbsent(
+                    ipAddress,
+                    ignoredKey -> new ArrayList<>()
+            ).add(event);
         }
 
         return eventsByIp;
@@ -73,11 +86,9 @@ public class PasswordSprayDetector {
             List<SecurityEvent> events) {
 
         for (int start = 0; start < events.size(); start++) {
-
             Set<String> usernames = new HashSet<>();
 
             for (int end = start; end < events.size(); end++) {
-
                 SecurityEvent firstEvent = events.get(start);
                 SecurityEvent currentEvent = events.get(end);
 
@@ -90,10 +101,14 @@ public class PasswordSprayDetector {
                     break;
                 }
 
-                usernames.add(currentEvent.getUsername());
+                String username = normalize(currentEvent.getUsername());
+
+                if (username != null
+                        && !"UNKNOWN".equalsIgnoreCase(username)) {
+                    usernames.add(username.toLowerCase(Locale.ROOT));
+                }
 
                 if (usernames.size() >= USER_THRESHOLD) {
-
                     return new SecurityAlert(
                             "PASSWORD_SPRAY",
                             "HIGH",
@@ -109,5 +124,19 @@ public class PasswordSprayDetector {
         }
 
         return null;
+    }
+
+    private String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim();
+
+        if (normalized.isEmpty() || "-".equals(normalized)) {
+            return null;
+        }
+
+        return normalized;
     }
 }
