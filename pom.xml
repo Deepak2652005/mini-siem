@@ -1,3 +1,5 @@
+
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
@@ -15,6 +17,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <javafx.version>26.0.1</javafx.version>
+        <junit.version>5.13.4</junit.version>
     </properties>
 
     <dependencies>
@@ -40,28 +43,44 @@
             <version>${javafx.version}</version>
         </dependency>
 
+        <!-- JUnit 5: Automated testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
-
         <plugins>
 
-            <!-- JavaFX Maven Plugin -->
+            <!-- Compile Java source code -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+
+            <!-- Run JUnit 5 tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.4</version>
+            </plugin>
+
+            <!-- JavaFX application launcher -->
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
-
                 <configuration>
-                    <mainClass>
-                        com.deepak.minisiem.ui.DashboardApplication
-                    </mainClass>
+                    <mainClass>com.deepak.minisiem.ui.DashboardApplication</mainClass>
                 </configuration>
-
             </plugin>
 
         </plugins>
-
     </build>
 
 </project>
