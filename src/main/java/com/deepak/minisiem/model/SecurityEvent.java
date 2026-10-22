@@ -1,6 +1,8 @@
+
 package com.deepak.minisiem.model;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 public class SecurityEvent {
 
@@ -8,41 +10,21 @@ public class SecurityEvent {
     private final String eventType;
     private final String username;
     private final String ipAddress;
-
     private final String sourceEventId;
-
-    // Process path / general event details
     private final String details;
-
-    // Process command line
     private final String commandLine;
 
-    // =========================
-    // DEMO LOG CONSTRUCTOR
-    // =========================
-
+    // Demo log constructor
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
             String username,
             String ipAddress) {
 
-        this(
-                timestamp,
-                eventType,
-                username,
-                ipAddress,
-                null,
-                null,
-                null
-        );
+        this(timestamp, eventType, username, ipAddress, null, null, null);
     }
 
-    // =========================
-    // WINDOWS EVENT
-    // NO DETAILS
-    // =========================
-
+    // Windows event without details
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
@@ -50,22 +32,11 @@ public class SecurityEvent {
             String ipAddress,
             String sourceEventId) {
 
-        this(
-                timestamp,
-                eventType,
-                username,
-                ipAddress,
-                sourceEventId,
-                null,
-                null
-        );
+        this(timestamp, eventType, username, ipAddress,
+                sourceEventId, null, null);
     }
 
-    // =========================
-    // WINDOWS EVENT
-    // WITH DETAILS
-    // =========================
-
+    // Windows event with details
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
@@ -74,21 +45,11 @@ public class SecurityEvent {
             String sourceEventId,
             String details) {
 
-        this(
-                timestamp,
-                eventType,
-                username,
-                ipAddress,
-                sourceEventId,
-                details,
-                null
-        );
+        this(timestamp, eventType, username, ipAddress,
+                sourceEventId, details, null);
     }
 
-    // =========================
-    // FULL CONSTRUCTOR
-    // =========================
-
+    // Full constructor
     public SecurityEvent(
             LocalDateTime timestamp,
             String eventType,
@@ -98,13 +59,31 @@ public class SecurityEvent {
             String details,
             String commandLine) {
 
-        this.timestamp = timestamp;
-        this.eventType = eventType;
-        this.username = username;
-        this.ipAddress = ipAddress;
-        this.sourceEventId = sourceEventId;
-        this.details = details;
-        this.commandLine = commandLine;
+        this.timestamp = Objects.requireNonNull(
+                timestamp, "Timestamp must not be null");
+
+        this.eventType = requireText(
+                eventType, "Event type must not be blank");
+
+        this.username = normalizeOptional(username);
+        this.ipAddress = normalizeOptional(ipAddress);
+        this.sourceEventId = normalizeOptional(sourceEventId);
+        this.details = normalizeOptional(details);
+        this.commandLine = normalizeOptional(commandLine);
+    }
+
+    private static String requireText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(message);
+        }
+        return value.trim();
+    }
+
+    private static String normalizeOptional(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     public LocalDateTime getTimestamp() {
