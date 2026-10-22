@@ -19,11 +19,9 @@ public class DetectionEngine {
     private static final long BRUTE_FORCE_WINDOW_SECONDS = 60;
 
     private static final int PASSWORD_SPRAY_USER_THRESHOLD = 4;
-    private static final long PASSWORD_SPRAY_WINDOW_SECONDS = 60;
+    private static final long PASSWORD_SPRAY_WINDOW_SECONDS = 120;
 
-    // Main detection entry point
     public List<SecurityAlert> detect(List<SecurityEvent> events) {
-
         List<SecurityAlert> alerts = new ArrayList<>();
 
         if (events == null || events.isEmpty()) {
@@ -49,7 +47,6 @@ public class DetectionEngine {
         return alerts;
     }
 
-    // Brute-force detection
     private void detectBruteForce(
             List<SecurityEvent> events,
             List<SecurityAlert> alerts) {
@@ -57,36 +54,33 @@ public class DetectionEngine {
         Set<String> alertedAccounts = new HashSet<>();
 
         for (int i = 0; i < events.size(); i++) {
-
             SecurityEvent first = events.get(i);
 
             if (!isFailedLogin(first)) {
                 continue;
             }
 
-            String username = first.getUsername();
-            String ipAddress = first.getIpAddress();
+            String username = normalize(first.getUsername());
+            String ipAddress = normalize(first.getIpAddress());
 
-            if (username == null || username.isBlank()
-                    || ipAddress == null || ipAddress.isBlank()) {
+            if (!isUsableUsername(username)
+                    || !isUsableIp(ipAddress)) {
                 continue;
             }
 
             String accountKey =
                     username.toLowerCase(Locale.ROOT)
-                            + "|"
-                            + ipAddress.toLowerCase(Locale.ROOT);
+                            + "|" + ipAddress.toLowerCase(Locale.ROOT);
 
             if (alertedAccounts.contains(accountKey)) {
                 continue;
             }
 
             LocalDateTime startTime = first.getTimestamp();
-            int attempts = 1;
+            int attempts = 0;
             LocalDateTime lastFailure = startTime;
 
-            for (int j = i + 1; j < events.size(); j++) {
-
+            for (int j = i; j < events.size(); j++) {
                 SecurityEvent candidate = events.get(j);
 
                 long seconds = Duration.between(
@@ -102,49 +96,38 @@ public class DetectionEngine {
                     continue;
                 }
 
-                boolean sameUser = equalsIgnoreCase(
-                        username,
-                        candidate.getUsername()
-                );
+                if (equalsIgnoreCase(
+                        username, candidate.getUsername())
+                        && equalsIgnoreCase(
+                        ipAddress, candidate.getIpAddress())) {
 
-                boolean sameIp = equalsIgnoreCase(
-                        ipAddress,
-                        candidate.getIpAddress()
-                );
-
-                if (sameUser && sameIp) {
                     attempts++;
                     lastFailure = candidate.getTimestamp();
                 }
+            }
 
-                if (attempts >= BRUTE_FORCE_THRESHOLD) {
+            if (attempts >= BRUTE_FORCE_THRESHOLD) {
+                long actualWindow = Duration.between(
+                        startTime,
+                        lastFailure
+                ).getSeconds();
 
-                    long actualWindow = Duration.between(
-                            startTime,
-                            lastFailure
-                    ).getSeconds();
+                alerts.add(new SecurityAlert(
+                        "BRUTE_FORCE",
+                        "HIGH",
+                        username,
+                        ipAddress,
+                        attempts
+                                + " failed login attempts detected within "
+                                + actualWindow
+                                + " seconds."
+                ));
 
-                    alerts.add(
-                            new SecurityAlert(
-                                    "BRUTE_FORCE",
-                                    "HIGH",
-                                    username,
-                                    ipAddress,
-                                    attempts
-                                            + " failed login attempts detected within "
-                                            + actualWindow
-                                            + " seconds."
-                            )
-                    );
-
-                    alertedAccounts.add(accountKey);
-                    break;
-                }
+                alertedAccounts.add(accountKey);
             }
         }
     }
 
-    // Password-spray detection
     private void detectPasswordSpray(
             List<SecurityEvent> events,
             List<SecurityAlert> alerts) {
@@ -152,16 +135,15 @@ public class DetectionEngine {
         Set<String> alertedIps = new HashSet<>();
 
         for (int i = 0; i < events.size(); i++) {
-
             SecurityEvent first = events.get(i);
 
             if (!isFailedLogin(first)) {
                 continue;
             }
 
-            String ipAddress = first.getIpAddress();
+            String ipAddress = normalize(first.getIpAddress());
 
-            if (ipAddress == null || ipAddress.isBlank()) {
+            if (!isUsableIp(ipAddress)) {
                 continue;
             }
 
@@ -174,15 +156,7 @@ public class DetectionEngine {
             LocalDateTime startTime = first.getTimestamp();
             Set<String> usernames = new HashSet<>();
 
-            if (first.getUsername() != null
-                    && !first.getUsername().isBlank()) {
-                usernames.add(
-                        first.getUsername().toLowerCase(Locale.ROOT)
-                );
-            }
-
-            for (int j = i + 1; j < events.size(); j++) {
-
+            for (int j = i; j < events.size(); j++) {
                 SecurityEvent candidate = events.get(j);
 
                 long seconds = Duration.between(
@@ -194,37 +168,29 @@ public class DetectionEngine {
                     break;
                 }
 
-                if (!isFailedLogin(candidate)) {
+                if (!isFailedLogin(candidate)
+                        || !equalsIgnoreCase(
+                        ipAddress, candidate.getIpAddress())) {
                     continue;
                 }
 
-                if (!equalsIgnoreCase(
-                        ipAddress,
-                        candidate.getIpAddress())) {
-                    continue;
-                }
+                String username = normalize(candidate.getUsername());
 
-                if (candidate.getUsername() != null
-                        && !candidate.getUsername().isBlank()) {
-                    usernames.add(
-                            candidate.getUsername().toLowerCase(Locale.ROOT)
-                    );
+                if (isUsableUsername(username)) {
+                    usernames.add(username.toLowerCase(Locale.ROOT));
                 }
 
                 if (usernames.size() >= PASSWORD_SPRAY_USER_THRESHOLD) {
-
-                    alerts.add(
-                            new SecurityAlert(
-                                    "PASSWORD_SPRAY",
-                                    "HIGH",
-                                    "MULTIPLE_USERS",
-                                    ipAddress,
-                                    usernames.size()
-                                            + " different usernames targeted within "
-                                            + PASSWORD_SPRAY_WINDOW_SECONDS
-                                            + " seconds."
-                            )
-                    );
+                    alerts.add(new SecurityAlert(
+                            "PASSWORD_SPRAY",
+                            "HIGH",
+                            "MULTIPLE_USERS",
+                            ipAddress,
+                            usernames.size()
+                                    + " different usernames targeted within "
+                                    + seconds
+                                    + " seconds."
+                    ));
 
                     alertedIps.add(ipKey);
                     break;
@@ -233,13 +199,11 @@ public class DetectionEngine {
         }
     }
 
-    // Suspicious process detection
     private void detectSuspiciousProcesses(
             List<SecurityEvent> events,
             List<SecurityAlert> alerts) {
 
         for (SecurityEvent event : events) {
-
             if (!"PROCESS_CREATED".equalsIgnoreCase(
                     event.getEventType())) {
                 continue;
@@ -248,7 +212,7 @@ public class DetectionEngine {
             String processPath = lower(event.getDetails());
             String commandLine = lower(event.getCommandLine());
 
-            if (processPath.isBlank()) {
+            if (processPath.isBlank() && commandLine.isBlank()) {
                 continue;
             }
 
@@ -334,24 +298,15 @@ public class DetectionEngine {
         }
     }
 
-    // Exclude the Mini SIEM's own log-collection PowerShell command
     private boolean isMiniSiemCollector(
             String processPath,
             String commandLine) {
 
-        if (processPath == null || commandLine == null) {
-            return false;
-        }
-
-        if (!processPath.contains("powershell.exe")) {
-            return false;
-        }
-
-        return commandLine.contains("get-winevent")
+        return processPath.contains("powershell.exe")
+                && commandLine.contains("get-winevent")
                 && commandLine.contains("filterhashtable");
     }
 
-    // Create a process-related alert
     private void createProcessAlert(
             List<SecurityAlert> alerts,
             SecurityEvent event,
@@ -360,14 +315,10 @@ public class DetectionEngine {
             String description) {
 
         String processPath = safe(
-                event.getDetails(),
-                "UNKNOWN_PROCESS"
-        );
+                event.getDetails(), "UNKNOWN_PROCESS");
 
         String commandLine = safe(
-                event.getCommandLine(),
-                "NO_COMMAND_LINE"
-        );
+                event.getCommandLine(), "NO_COMMAND_LINE");
 
         String timestamp = event.getTimestamp() != null
                 ? event.getTimestamp().toString()
@@ -378,30 +329,51 @@ public class DetectionEngine {
                 + " | Command: " + commandLine
                 + " | Time: " + timestamp;
 
-        alerts.add(
-                new SecurityAlert(
-                        alertType,
-                        severity,
-                        safe(event.getUsername(), "UNKNOWN"),
-                        safe(event.getIpAddress(), "LOCAL"),
-                        message
-                )
-        );
+        alerts.add(new SecurityAlert(
+                alertType,
+                severity,
+                safe(event.getUsername(), "UNKNOWN"),
+                safe(event.getIpAddress(), "LOCAL"),
+                message
+        ));
     }
 
-    // Helpers
     private boolean isFailedLogin(SecurityEvent event) {
         return event != null
                 && event.getTimestamp() != null
                 && "LOGIN_FAILED".equalsIgnoreCase(
-                event.getEventType()
-        );
+                event.getEventType());
+    }
+
+    private boolean isUsableUsername(String username) {
+        return username != null
+                && !username.isBlank()
+                && !"UNKNOWN".equalsIgnoreCase(username);
+    }
+
+    private boolean isUsableIp(String ipAddress) {
+        return ipAddress != null
+                && !ipAddress.isBlank()
+                && !"UNKNOWN".equalsIgnoreCase(ipAddress)
+                && !"LOCAL".equalsIgnoreCase(ipAddress);
     }
 
     private boolean equalsIgnoreCase(String first, String second) {
         return first != null
                 && second != null
-                && first.equalsIgnoreCase(second);
+                && first.trim().equalsIgnoreCase(second.trim());
+    }
+
+    private String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim();
+
+        return normalized.isEmpty() || "-".equals(normalized)
+                ? null
+                : normalized;
     }
 
     private String safe(String value, String fallback) {
@@ -421,10 +393,8 @@ public class DetectionEngine {
             return false;
         }
 
-        String lowerValue = value.toLowerCase(Locale.ROOT);
-
         for (String pattern : patterns) {
-            if (lowerValue.contains(pattern.toLowerCase(Locale.ROOT))) {
+            if (value.contains(pattern.toLowerCase(Locale.ROOT))) {
                 return true;
             }
         }
