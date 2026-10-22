@@ -1,3 +1,4 @@
+
 package com.deepak.minisiem.detector;
 
 import com.deepak.minisiem.alert.SecurityAlert;
@@ -8,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class BruteForceDetector {
@@ -16,24 +18,28 @@ public class BruteForceDetector {
     private static final long TIME_WINDOW_SECONDS = 120;
 
     public List<SecurityAlert> detect(List<SecurityEvent> events) {
+        List<SecurityAlert> alerts = new ArrayList<>();
+
+        if (events == null || events.isEmpty()) {
+            return alerts;
+        }
 
         Map<String, List<SecurityEvent>> groupedEvents =
                 groupFailedEvents(events);
 
-        List<SecurityAlert> alerts = new ArrayList<>();
-
         for (Map.Entry<String, List<SecurityEvent>> entry
                 : groupedEvents.entrySet()) {
 
-            String key = entry.getKey();
             List<SecurityEvent> failedEvents = entry.getValue();
 
             failedEvents.sort(
                     Comparator.comparing(SecurityEvent::getTimestamp)
             );
 
-            SecurityAlert alert =
-                    detectSlidingWindow(key, failedEvents);
+            SecurityAlert alert = detectSlidingWindow(
+                    entry.getKey(),
+                    failedEvents
+            );
 
             if (alert != null) {
                 alerts.add(alert);
@@ -46,25 +52,33 @@ public class BruteForceDetector {
     private Map<String, List<SecurityEvent>> groupFailedEvents(
             List<SecurityEvent> events) {
 
-        Map<String, List<SecurityEvent>> groupedEvents =
-                new HashMap<>();
+        Map<String, List<SecurityEvent>> groupedEvents = new HashMap<>();
 
         for (SecurityEvent event : events) {
-
-            if (!event.getEventType().equals("LOGIN_FAILED")) {
+            if (event == null
+                    || event.getEventType() == null
+                    || event.getTimestamp() == null) {
                 continue;
             }
 
-            String key =
-                    event.getUsername()
-                            + "|"
-                            + event.getIpAddress();
+            if (!"LOGIN_FAILED".equalsIgnoreCase(event.getEventType())) {
+                continue;
+            }
+
+            String username = normalize(event.getUsername());
+            String ipAddress = normalize(event.getIpAddress());
+
+            if (username.isEmpty()
+                    || ipAddress.isEmpty()
+                    || username.equals("UNKNOWN")
+                    || ipAddress.equals("UNKNOWN")) {
+                continue;
+            }
+
+            String key = username + "|" + ipAddress;
 
             groupedEvents
-                    .computeIfAbsent(
-                            key,
-                            ignoredKey -> new ArrayList<>()
-                    )
+                    .computeIfAbsent(key, ignored -> new ArrayList<>())
                     .add(event);
         }
 
@@ -80,34 +94,27 @@ public class BruteForceDetector {
         }
 
         for (int startIndex = 0;
-             startIndex <= failedEvents.size()
-                     - FAILED_ATTEMPT_THRESHOLD;
+             startIndex <= failedEvents.size() - FAILED_ATTEMPT_THRESHOLD;
              startIndex++) {
 
-            int endIndex =
-                    startIndex + FAILED_ATTEMPT_THRESHOLD - 1;
+            int endIndex = startIndex + FAILED_ATTEMPT_THRESHOLD - 1;
 
-            SecurityEvent firstEvent =
-                    failedEvents.get(startIndex);
-
-            SecurityEvent lastEvent =
-                    failedEvents.get(endIndex);
+            SecurityEvent firstEvent = failedEvents.get(startIndex);
+            SecurityEvent lastEvent = failedEvents.get(endIndex);
 
             long durationSeconds = Duration.between(
                     firstEvent.getTimestamp(),
                     lastEvent.getTimestamp()
             ).toSeconds();
 
-            if (durationSeconds <= TIME_WINDOW_SECONDS) {
+            if (durationSeconds >= 0
+                    && durationSeconds <= TIME_WINDOW_SECONDS) {
 
                 String[] keyParts = key.split("\\|", 2);
 
-                String username = keyParts[0];
-                String ipAddress = keyParts[1];
-
                 return createAlert(
-                        username,
-                        ipAddress,
+                        keyParts[0],
+                        keyParts[1],
                         durationSeconds
                 );
             }
@@ -121,11 +128,10 @@ public class BruteForceDetector {
             String ipAddress,
             long durationSeconds) {
 
-        String message =
-                FAILED_ATTEMPT_THRESHOLD
-                        + " failed login attempts detected within "
-                        + durationSeconds
-                        + " seconds.";
+        String message = FAILED_ATTEMPT_THRESHOLD
+                + " failed login attempts detected within "
+                + durationSeconds
+                + " seconds.";
 
         return new SecurityAlert(
                 "BRUTE_FORCE",
@@ -134,5 +140,11 @@ public class BruteForceDetector {
                 ipAddress,
                 message
         );
+    }
+
+    private String normalize(String value) {
+        return value == null
+                ? ""
+                : value.trim().toUpperCase(Locale.ROOT);
     }
 }
